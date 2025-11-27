@@ -1,69 +1,97 @@
 # Alarmify
 
-![Alarmify Logo](https://github.com/Lemniscate-SHA-256/Alarmify/blob/main/Logo%20First%20Draft.png)
-
-**Alarmify** is an open-source Spotify Playlist Alarm GUI app for Linux that allows you to wake up to your favorite Spotify playlists.
+Alarmify lets you schedule Spotify playlists as alarms. Wake up to your favorite music by selecting a playlist, setting a time, and adjusting the volume.
 
 ## Features
-- Spotify Authentication
-- Select and play Spotify playlists as alarms
-- User-friendly GUI built with PyQt5
-- Schedule alarms to play at specific times
 
-## Screenshots
-![Screenshot1](https://your-screenshot-url.com/screenshot1.png)
-![Screenshot2](https://your-screenshot-url.com/screenshot2.png)
+- **Playlist Thumbnails**: View playlist cover images, track counts, and owner names
+- **Authentication Status**: See your connection state and username in the UI header
+- **Alarm Management**: View, track, and delete scheduled alarms via the Manage Alarms dialog
+- **Volume Control**: Set playback volume (0-100%) for each alarm
+- **Modern Dark Theme**: Spotify-inspired UI with dark background and green accents
 
-## Installation
+## Quick Windows Setup
 
-### Prerequisites
-- Python 3.x
-- Spotify Developer Account (for API credentials)
+1. Install Python 3.10+ and ensure `python` is on the PATH.
+2. Open PowerShell in the project folder `Alarmify`.
 
-### Setup
-1. Clone the repository:
-    ```bash
-    git clone https://github.com/yourusername/alarmify.git
-    cd alarmify
-    ```
+Create and activate a virtual environment:
 
-2. Install dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+```
 
-3. Set up Spotify API credentials:
-    - Create a `.env` file in the root directory and add your credentials:
-      ```plaintext
-      SPOTIPY_CLIENT_ID='your_client_id'
-      SPOTIPY_CLIENT_SECRET='your_client_secret'
-      SPOTIPY_REDIRECT_URI='your_redirect_uri'
-      ```
+Install dependencies:
 
-4. Run the application:
-    ```bash
-    python main.py
-    ```
+```powershell
+pip install -r requirements.txt
+```
 
-## Usage
-1. Launch the application.
-2. Log in to Spotify.
-3. Select the time and playlist for your alarm.
-4. Set the alarm.
+## Spotify Developer Setup
 
-## Contributing
-We welcome contributions! Please read our [Contributing Guidelines](CONTRIBUTING.md) for more details.
+1. Create an app at the Spotify Developer Dashboard: https://developer.spotify.com/dashboard/applications
+2. Add a Redirect URI to your app settings. For local testing use `http://localhost:8888/callback`.
+
+## Using the App
+
+1. Run the app:
+
+```powershell
+python main.py
+```
+
+2. Click the gear icon in the header, enter your Spotify `Client ID`, `Client Secret`, and `Redirect URI`, then click Save.
+3. Click `Login to Spotify`. Your browser will open to Spotify's consent screen. After authorizing, the app will capture the authorization code automatically.
+4. Playlists will appear in the left pane with thumbnails and track counts. Select one.
+5. Set the alarm time using the time picker and adjust volume with the slider.
+6. Click `Set Alarm` to schedule playback.
+7. Click `Manage Alarms` to view or delete scheduled alarms.
+
+## Project Structure
+
+```
+Alarmify/
+├── main.py              # Entry point
+├── gui.py               # PyQt5 GUI with all UI components
+├── alarm.py             # Alarm scheduling and management
+├── spotify_api/
+│   └── spotify_api.py   # Spotify Web API wrapper
+├── tests/
+│   ├── test_alarm.py    # Alarm module tests
+│   └── test_spotify_api.py  # API module tests
+├── requirements.txt     # Python dependencies
+└── spotify_style.qss    # Qt stylesheet for dark theme
+```
+
+## Running Tests
+
+```powershell
+python -m pytest tests/ -v
+```
+
+## Notes
+
+- The app starts a short-lived local HTTP server to capture the OAuth redirect; make sure the redirect URI host/port are free and match your Spotify app settings.
+- Spotify Premium is required for playback control features.
+- Instead of using the Settings dialog, you can set environment variables manually:
+
+```powershell
+$env:SPOTIPY_CLIENT_ID = 'your_client_id'
+$env:SPOTIPY_CLIENT_SECRET = 'your_client_secret'
+$env:SPOTIPY_REDIRECT_URI = 'http://localhost:8888/callback'
+```
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "Spotify credentials not set" | Open Settings and enter your API credentials |
+| Playlist images not loading | Check internet connection; images load in background |
+| "No active device" error | Open Spotify on a device first, then set the alarm |
+| OAuth redirect fails | Ensure the redirect URI matches your Spotify app settings exactly |
 
 ## License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgments
-- [Spotify API](https://developer.spotify.com/documentation/web-api/)
-- [PyQt5](https://pypi.org/project/PyQt5/)
-- [Spotipy](https://spotipy.readthedocs.io/en/2.16.1/)
-
----
-
-**Author**: Lemniscate-SHA-256
-
-[![GitHub followers](https://img.shields.io/github/followers/Lemniscate-SHA-256.svg?style=social&label=Follow)](https://github.com/Lemniscate-SHA-256)
+See LICENSE file for details.

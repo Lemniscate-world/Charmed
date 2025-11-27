@@ -1,0 +1,55 @@
+/* Spotify-inspired stylesheet for Alarmify (Qt QSS) */
+
+QMainWindow {
+    background: #121212;
+    color: #ffffff;
+}
+
+#appLogo {
+    color: #1DB954;
+    font-size: 20px;
+}
+
+QLabel {
+    color: #b3b3b3;
+}
+
+QListWidget#playlistList {
+    background: #181818;
+    border: 1px solid #2a2a2a;
+    color: #e6e6e6;
+}
+
+QListWidget::item {
+    padding: 10px;
+}
+
+QListWidget::item:selected {
+    background: #1DB954;
+    color: #000000;
+}
+
+QPushButton {
+    background: #1DB954;
+    color: #000000;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-weight: 600;
+}
+
+QPushButton:disabled {
+    background: #3a3a3a;
+    color: #777777;
+}
+
+QTimeEdit#timeInput {
+    background: #181818;
+    color: #e6e6e6;
+    border: 1px solid #2a2a2a;
+    padding: 6px;
+}
+
+#timeLabel {
+    color: #b3b3b3;
+    font-weight: 600;
+}
