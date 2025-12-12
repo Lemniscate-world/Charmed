@@ -230,7 +230,8 @@ class SpotifyAPI:
         Get list of user's playlists with full metadata.
 
         Returns detailed info including images, track counts, and URIs
-        for enhanced UI display.
+        for enhanced UI display. Handles pagination to fetch all playlists
+        beyond the initial 50-item limit.
 
         Returns:
             list[dict]: List of playlist dictionaries with keys:
@@ -247,24 +248,31 @@ class SpotifyAPI:
         if not self.sp:
             raise RuntimeError('Spotify client not authenticated')
 
-        results = self.sp.current_user_playlists()
         playlists = []
+        results = self.sp.current_user_playlists()
 
-        for item in results.get('items', []):
-            # Get first image URL if available (highest resolution)
-            images = item.get('images', [])
-            image_url = images[0]['url'] if images else None
+        while results:
+            for item in results.get('items', []):
+                # Get first image URL if available (highest resolution)
+                images = item.get('images', [])
+                image_url = images[0]['url'] if images else None
 
-            # Build detailed playlist info
-            playlist_info = {
-                'name': item.get('name', 'Unknown'),
-                'id': item.get('id'),
-                'uri': item.get('uri'),
-                'track_count': item.get('tracks', {}).get('total', 0),
-                'image_url': image_url,
-                'owner': item.get('owner', {}).get('display_name', 'Unknown')
-            }
-            playlists.append(playlist_info)
+                # Build detailed playlist info
+                playlist_info = {
+                    'name': item.get('name', 'Unknown'),
+                    'id': item.get('id'),
+                    'uri': item.get('uri'),
+                    'track_count': item.get('tracks', {}).get('total', 0),
+                    'image_url': image_url,
+                    'owner': item.get('owner', {}).get('display_name', 'Unknown')
+                }
+                playlists.append(playlist_info)
+
+            # Check for next page of results
+            if results.get('next'):
+                results = self.sp.next(results)
+            else:
+                results = None
 
         return playlists
 
