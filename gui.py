@@ -70,6 +70,7 @@ class ImageLoaderThread(QThread):
         super().__init__()
         self.playlist_id = playlist_id  # Store playlist ID for signal
         self.image_url = image_url      # URL to download
+        self._is_running = True         # Flag for graceful shutdown
 
     def run(self):
         """
@@ -78,20 +79,32 @@ class ImageLoaderThread(QThread):
         Downloads image from URL, converts to QPixmap, and emits signal.
         On failure, emits an empty pixmap.
         """
+        if not self._is_running:
+            return
+        
         try:
             # Download image data from URL
             response = requests.get(self.image_url, timeout=10)
             response.raise_for_status()  # Raise exception for HTTP errors
+
+            if not self._is_running:
+                return
 
             # Convert raw bytes to QPixmap
             pixmap = QPixmap()
             pixmap.loadFromData(QByteArray(response.content))
 
             # Emit signal with playlist ID and loaded pixmap
-            self.image_loaded.emit(self.playlist_id, pixmap)
+            if self._is_running:
+                self.image_loaded.emit(self.playlist_id, pixmap)
         except Exception:
             # On error, emit empty pixmap
-            self.image_loaded.emit(self.playlist_id, QPixmap())
+            if self._is_running:
+                self.image_loaded.emit(self.playlist_id, QPixmap())
+
+    def stop(self):
+        """Request the thread to stop gracefully."""
+        self._is_running = False
 
 
 class PlaylistItemWidget(QWidget):
@@ -519,6 +532,33 @@ class AlarmApp(QtWidgets.QMainWindow):
             'Alarm Set',
             f'Alarm set for {time_str}\nPlaylist: {playlist_name}\nVolume: {volume}%'
         )
+
+    def closeEvent(self, event):
+        """
+        Handle window close event - cleanup resources before exit.
+
+        Ensures all background threads are stopped and resources are released:
+        - Stops all image loader threads
+        - Shuts down the alarm scheduler thread
+        - Cleans up scheduled jobs
+
+        Args:
+            event: QCloseEvent from Qt framework
+        """
+        self._cleanup_resources()
+        event.accept()
+
+    def _cleanup_resources(self):
+        """Clean up all background threads and resources."""
+        for loader in self.image_loaders:
+            if loader.isRunning():
+                loader.stop()
+                loader.wait(1000)
+        
+        self.image_loaders.clear()
+        
+        if self.alarm:
+            self.alarm.shutdown()
 
 
 class AlarmManagerDialog(QDialog):

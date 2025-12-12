@@ -177,3 +177,20 @@ class Alarm:
         for alarm in self.alarms:
             schedule.cancel_job(alarm['job'])
         self.alarms.clear()
+
+    def shutdown(self):
+        """
+        Gracefully shutdown the alarm scheduler.
+
+        Stops the scheduler thread, cancels all scheduled jobs,
+        and cleans up resources. Should be called before application exit.
+        """
+        if self.scheduler_running:
+            self.scheduler_running = False
+            
+            if self.scheduler_thread and self.scheduler_thread.is_alive():
+                self.scheduler_thread.join(timeout=2.0)
+        
+        for alarm in self.alarms:
+            schedule.cancel_job(alarm['job'])
+        self.alarms.clear()
