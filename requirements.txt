@@ -2,3 +2,5 @@ PyQt5
 spotipy
 schedule
 python-dotenv
+pytest
+requests
