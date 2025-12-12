@@ -22,60 +22,9 @@ import schedule  # Job scheduling library
 import time      # Time-related functions (sleep)
 import threading  # Background thread execution
 import re        # Regular expressions for time validation
-import logging   # Structured logging
-from logging.handlers import RotatingFileHandler  # Log rotation
-from pathlib import Path  # Path manipulation
-from datetime import datetime  # Timestamp generation
+from logging_config import get_logger
 
-
-def setup_logging():
-    """
-    Configure logging with rotating file handler.
-    
-    Creates a logs directory in the application folder and sets up
-    a rotating file handler with timestamped log files. Logs are
-    configured with INFO level and include contextual information.
-    """
-    # Create logs directory if it doesn't exist
-    logs_dir = Path(__file__).parent / 'logs'
-    logs_dir.mkdir(exist_ok=True)
-    
-    # Generate timestamped log filename
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = logs_dir / f'alarmify_{timestamp}.log'
-    
-    # Configure rotating file handler (10MB per file, keep 5 backups)
-    file_handler = RotatingFileHandler(
-        log_file,
-        maxBytes=10 * 1024 * 1024,  # 10 MB
-        backupCount=5,
-        encoding='utf-8'
-    )
-    file_handler.setLevel(logging.DEBUG)
-    
-    # Configure console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    
-    # Create formatter with timestamp, level, module, and message
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-    
-    # Get logger for this module
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
-    return logger
-
-
-# Initialize logger for this module
-logger = setup_logging()
+logger = get_logger(__name__)
 
 
 class Alarm:
@@ -99,6 +48,7 @@ class Alarm:
             alarm_failure_callback: Optional function to call when alarm fails.
                 Should accept (time_str, playlist, error_message) arguments.
         """
+        logger.info('Initializing Alarm manager')
         # List to store alarm metadata for UI display
         # Each entry: {'time': 'HH:MM', 'playlist': 'name', 'playlist_uri': 'uri', 'volume': 80, 'job': schedule.Job}
         self.alarms = []
@@ -169,6 +119,7 @@ class Alarm:
         # The job calls play_playlist with playlist URI, API, and volume
         job = schedule.every().day.at(time_str).do(
             self.play_playlist,      # Function to call
+            playlist_name,           # Playlist name for display
             playlist_uri,            # Playlist URI argument
             spotify_api,             # API instance argument
             volume,                  # Volume argument
@@ -222,19 +173,20 @@ class Alarm:
         self.scheduler_thread.start()
         logger.info("Alarm scheduler background thread initialized")
 
-    def play_playlist(self, playlist_uri, spotify_api, volume=80, time_str=None):
+    def play_playlist(self, playlist_name, playlist_uri, spotify_api, volume=80, time_str=None):
         """
         Play a playlist - called by scheduler when alarm triggers.
 
         Sets the volume first, then starts playlist playback.
 
         Args:
+            playlist_name: Name of the playlist (for logging/errors).
             playlist_uri: Spotify URI of playlist to play.
             spotify_api: SpotifyAPI instance for control.
             volume: Volume level 0-100.
             time_str: Time string for error reporting (optional).
         """
-        logger.info(f"Alarm triggered - Playing playlist: {playlist_uri} at volume {volume}%")
+        logger.info(f"Alarm triggered - Playing playlist: {playlist_name} ({playlist_uri}) at volume {volume}%")
         
         try:
             # Set volume before playing
@@ -248,9 +200,14 @@ class Alarm:
         try:
             # Start playlist playback by URI
             spotify_api.play_playlist_by_uri(playlist_uri)
-            logger.info(f"Successfully started playlist playback: {playlist_uri}")
+            logger.info(f"Successfully started playlist playback: {playlist_name}")
         except Exception as e:
-            logger.error(f"Alarm playback failed for playlist {playlist_uri}: {e}", exc_info=True)
+            error_msg = str(e)
+            logger.error(f"Alarm playback failed for playlist {playlist_name}: {e}", exc_info=True)
+            
+            # Call failure callback if provided
+            if self.alarm_failure_callback and time_str:
+                self.alarm_failure_callback(time_str, playlist_name, error_msg)
 
     def get_alarms(self):
         """

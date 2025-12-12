@@ -48,6 +48,9 @@ from dotenv import load_dotenv  # Environment variable loading
 # Local module imports
 from spotify_api.spotify_api import SpotifyAPI  # Spotify API wrapper
 from alarm import Alarm  # Alarm scheduling
+from logging_config import get_logger, get_log_files, read_log_file, get_current_log_file
+
+logger = get_logger(__name__)
 
 
 class ImageLoaderThread(QThread):
@@ -98,9 +101,10 @@ class ImageLoaderThread(QThread):
             # Emit signal with playlist ID and loaded pixmap
             if self._is_running:
                 self.image_loaded.emit(self.playlist_id, pixmap)
-        except Exception:
+        except Exception as e:
             # On error, emit empty pixmap
             if self._is_running:
+                logger.warning(f'Failed to load playlist image from {self.image_url}: {e}')
                 self.image_loaded.emit(self.playlist_id, QPixmap())
 
     def stop(self):
@@ -205,6 +209,8 @@ class AlarmApp(QtWidgets.QMainWindow):
     def __init__(self):
         """Initialize the main window and all UI components."""
         super(AlarmApp, self).__init__()
+        
+        logger.info('Initializing Alarmify main window')
 
         # Track active image loader threads to prevent garbage collection
         self.image_loaders = []
@@ -221,14 +227,16 @@ class AlarmApp(QtWidgets.QMainWindow):
             try:
                 with open(style_path, 'r', encoding='utf-8') as f:
                     self.setStyleSheet(f.read())
-            except Exception:
-                pass  # Continue without stylesheet
+                logger.debug('Applied Spotify stylesheet')
+            except Exception as e:
+                logger.warning(f'Failed to load stylesheet: {e}')
 
         # Try to initialize Spotify API with existing credentials
         try:
             self.spotify_api = SpotifyAPI()
         except RuntimeError as e:
             # No credentials configured yet - show warning
+            logger.warning('Spotify credentials not configured')
             QMessageBox.warning(self, 'Spotify credentials', str(e))
             self.spotify_api = None
 
@@ -243,6 +251,7 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.set_alarm_button.clicked.connect(self.set_alarm)
         self.settings_button.clicked.connect(self.open_settings)
         self.manage_alarms_button.clicked.connect(self.open_alarm_manager)
+        self.view_logs_button.clicked.connect(self.open_log_viewer)
 
         # Disable buttons if no credentials
         if not self.spotify_api:
@@ -254,6 +263,7 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         # Auto-connect: If already authenticated, load playlists automatically
         if self.spotify_api and self.spotify_api.is_authenticated():
+            logger.info('Auto-loading playlists (cached authentication)')
             self._load_playlists()
             
         # Start device status update timer
@@ -388,6 +398,11 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.manage_alarms_button.setObjectName('manageAlarmsButton')
         right_panel.addWidget(self.manage_alarms_button)
 
+        # View Logs button
+        self.view_logs_button = QPushButton('View Logs')
+        self.view_logs_button.setObjectName('viewLogsButton')
+        right_panel.addWidget(self.view_logs_button)
+
         # Push everything up
         right_panel.addStretch()
 
@@ -435,6 +450,7 @@ class AlarmApp(QtWidgets.QMainWindow):
         """
         title = 'Alarm Failed'
         message = f'Alarm at {time_str} failed to play "{playlist}".\n\n{error_message}'
+        logger.error(f'Alarm failure callback: {message}')
         self._show_notification(title, message, QSystemTrayIcon.Critical)
     
     def _update_device_status(self):
@@ -492,6 +508,7 @@ class AlarmApp(QtWidgets.QMainWindow):
             )
             return
 
+        logger.info('User initiated Spotify login')
         try:
             # Perform OAuth authentication
             self.spotify_api.authenticate()
@@ -503,8 +520,10 @@ class AlarmApp(QtWidgets.QMainWindow):
             self._load_playlists()
             
             self._show_notification('Login Successful', 'Successfully connected to Spotify')
+            logger.info('Spotify login successful')
 
         except Exception as e:
+            logger.error(f'Spotify login failed: {e}', exc_info=True)
             error_msg = f'Failed to authenticate with Spotify.\n\nError: {str(e)}\n\nPlease check your credentials and internet connection.'
             QMessageBox.critical(self, 'Login Failed', error_msg)
 
@@ -513,6 +532,7 @@ class AlarmApp(QtWidgets.QMainWindow):
         if not self.spotify_api:
             return
 
+        logger.info('Loading user playlists')
         try:
             # Get detailed playlist info
             playlists = self.spotify_api.get_playlists_detailed()
@@ -544,9 +564,13 @@ class AlarmApp(QtWidgets.QMainWindow):
                 if image_url:
                     self._load_playlist_image(playlist_id, image_url)
 
+            logger.info(f'Loaded {len(playlists)} playlists into UI')
+
         except RuntimeError as e:
+            logger.error(f'Failed to load playlists: {e}', exc_info=True)
             QMessageBox.warning(self, 'Failed to Load Playlists', str(e))
         except Exception as e:
+            logger.error(f'Unexpected error loading playlists: {e}', exc_info=True)
             QMessageBox.warning(self, 'Unexpected Error', f'Could not load playlists: {str(e)}')
 
     def _load_playlist_image(self, playlist_id, image_url):
@@ -572,6 +596,7 @@ class AlarmApp(QtWidgets.QMainWindow):
 
     def open_settings(self):
         """Open the settings dialog for Spotify credentials."""
+        logger.info('Opening settings dialog')
         dlg = SettingsDialog(self)
         if dlg.exec_() == QDialog.Accepted:
             # Reload environment and recreate SpotifyAPI
@@ -581,19 +606,29 @@ class AlarmApp(QtWidgets.QMainWindow):
                 self.login_button.setEnabled(True)
                 self.set_alarm_button.setEnabled(True)
                 self._update_auth_status()
+                logger.info('Spotify credentials updated successfully')
                 QMessageBox.information(
                     self, 
                     'Settings Saved', 
                     'Spotify credentials saved successfully. Please click "Login to Spotify" to connect.'
                 )
             except RuntimeError as e:
+                logger.error(f'Failed to reload Spotify API after settings update: {e}', exc_info=True)
                 QMessageBox.warning(self, 'Configuration Error', str(e))
             except Exception as e:
+                logger.error(f'Unexpected error reloading Spotify API: {e}', exc_info=True)
                 QMessageBox.warning(self, 'Unexpected Error', f'Could not initialize Spotify API: {str(e)}')
 
     def open_alarm_manager(self):
         """Open the alarm manager dialog."""
+        logger.info('Opening alarm manager')
         dlg = AlarmManagerDialog(self.alarm, self)
+        dlg.exec_()
+
+    def open_log_viewer(self):
+        """Open the log viewer dialog."""
+        logger.info('Opening log viewer')
+        dlg = LogViewerDialog(self)
         dlg.exec_()
 
     def set_alarm(self):
@@ -604,6 +639,7 @@ class AlarmApp(QtWidgets.QMainWindow):
         # Get selected playlist
         current = self.playlist_list.currentItem()
         if current is None:
+            logger.warning('User attempted to set alarm without selecting a playlist')
             QMessageBox.warning(self, 'No Playlist Selected', 'Please select a playlist from the list first.')
             return
 
@@ -621,6 +657,7 @@ class AlarmApp(QtWidgets.QMainWindow):
             return
 
         if not self.spotify_api:
+            logger.error('User attempted to set alarm without Spotify credentials')
             QMessageBox.warning(
                 self, 
                 'Not Authenticated', 
@@ -631,6 +668,8 @@ class AlarmApp(QtWidgets.QMainWindow):
         # Get volume setting
         volume = self.volume_slider.value()
 
+        logger.info(f'User setting alarm: time={time_str}, playlist={playlist_name}, volume={volume}%')
+
         # Set the alarm with both name and URI, with validation
         try:
             self.alarm.set_alarm(time_str, playlist_name, playlist_uri, self.spotify_api, volume)
@@ -638,10 +677,13 @@ class AlarmApp(QtWidgets.QMainWindow):
             message = f'Alarm successfully set for {time_str}\n\nPlaylist: {playlist_name}\nVolume: {volume}%'
             QMessageBox.information(self, 'Alarm Set', message)
             self._show_notification('Alarm Set', f'{time_str} - {playlist_name}')
+            logger.info('Alarm set successfully by user')
             
         except ValueError as e:
+            logger.error(f'Invalid time format for alarm: {e}')
             QMessageBox.warning(self, 'Invalid Time Format', str(e))
         except Exception as e:
+            logger.error(f'Failed to set alarm: {e}', exc_info=True)
             QMessageBox.critical(self, 'Failed to Set Alarm', f'Could not set alarm: {str(e)}')
 
     def closeEvent(self, event):
@@ -656,6 +698,7 @@ class AlarmApp(QtWidgets.QMainWindow):
         Args:
             event: QCloseEvent from Qt framework
         """
+        logger.info('Application closing - cleaning up resources')
         self._cleanup_resources()
         event.accept()
 
@@ -670,6 +713,8 @@ class AlarmApp(QtWidgets.QMainWindow):
         
         if self.alarm:
             self.alarm.shutdown()
+        
+        logger.info('Resource cleanup complete')
 
 
 class AlarmManagerDialog(QDialog):
@@ -928,8 +973,189 @@ class SettingsDialog(QDialog):
                 'Could not save credentials. Please check file permissions.'
             )
         except Exception as e:
+            logger.error(f'Failed to save settings: {e}', exc_info=True)
             QMessageBox.critical(
                 self, 
                 'Save Failed', 
                 f'Could not save credentials to .env file.\n\nError: {str(e)}'
+            )
+
+
+class LogViewerDialog(QDialog):
+    """
+    Dialog for viewing and exporting application logs.
+    
+    Displays log entries in a text area with automatic refresh capability.
+    Provides export functionality to save logs to a file.
+    """
+    
+    def __init__(self, parent=None):
+        """
+        Initialize the log viewer dialog.
+        
+        Args:
+            parent: Parent widget.
+        """
+        super().__init__(parent)
+        self.setWindowTitle('Log Viewer')
+        self.setMinimumSize(800, 600)
+        self.setModal(False)
+        
+        self._build_ui()
+        self._load_logs()
+    
+    def _build_ui(self):
+        """Build the dialog UI."""
+        layout = QVBoxLayout(self)
+        
+        # Header with title and controls
+        header_layout = QHBoxLayout()
+        
+        title = QLabel('Application Logs')
+        title.setFont(QFont('Arial', 14, QFont.Bold))
+        header_layout.addWidget(title)
+        
+        header_layout.addStretch()
+        
+        # Log file selector
+        self.log_file_combo = QtWidgets.QComboBox()
+        self.log_file_combo.setMinimumWidth(300)
+        self.log_file_combo.currentIndexChanged.connect(self._on_log_file_changed)
+        header_layout.addWidget(QLabel('Log File:'))
+        header_layout.addWidget(self.log_file_combo)
+        
+        layout.addLayout(header_layout)
+        
+        # Log text area
+        self.log_text = QtWidgets.QTextEdit()
+        self.log_text.setReadOnly(True)
+        self.log_text.setFont(QFont('Courier New', 9))
+        self.log_text.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
+        layout.addWidget(self.log_text)
+        
+        # Bottom button row
+        btn_layout = QHBoxLayout()
+        
+        # Refresh button
+        btn_refresh = QPushButton('Refresh')
+        btn_refresh.clicked.connect(self._load_logs)
+        btn_layout.addWidget(btn_refresh)
+        
+        # Export button
+        btn_export = QPushButton('Export Logs...')
+        btn_export.clicked.connect(self._export_logs)
+        btn_layout.addWidget(btn_export)
+        
+        # Open log folder button
+        btn_open_folder = QPushButton('Open Log Folder')
+        btn_open_folder.clicked.connect(self._open_log_folder)
+        btn_layout.addWidget(btn_open_folder)
+        
+        btn_layout.addStretch()
+        
+        # Close button
+        btn_close = QPushButton('Close')
+        btn_close.clicked.connect(self.accept)
+        btn_layout.addWidget(btn_close)
+        
+        layout.addLayout(btn_layout)
+    
+    def _load_logs(self):
+        """Load and display logs from the current log file."""
+        # Populate log file combo box
+        log_files = get_log_files()
+        current_text = self.log_file_combo.currentText()
+        
+        self.log_file_combo.clear()
+        if not log_files:
+            self.log_text.setPlainText('No log files found.')
+            return
+        
+        # Add log files to combo box
+        for log_file in log_files:
+            self.log_file_combo.addItem(log_file.name, log_file)
+        
+        # Try to restore previous selection
+        if current_text:
+            index = self.log_file_combo.findText(current_text)
+            if index >= 0:
+                self.log_file_combo.setCurrentIndex(index)
+        
+        # Load the selected log file
+        self._display_current_log()
+    
+    def _on_log_file_changed(self, index):
+        """Handle log file selection change."""
+        self._display_current_log()
+    
+    def _display_current_log(self):
+        """Display the currently selected log file."""
+        log_file = self.log_file_combo.currentData()
+        if not log_file:
+            self.log_text.setPlainText('No log file selected.')
+            return
+        
+        try:
+            content = read_log_file(log_file, max_lines=10000)
+            self.log_text.setPlainText(content)
+            # Scroll to bottom to show latest logs
+            self.log_text.verticalScrollBar().setValue(
+                self.log_text.verticalScrollBar().maximum()
+            )
+        except Exception as e:
+            self.log_text.setPlainText(f'Error loading log file: {e}')
+    
+    def _export_logs(self):
+        """Export current log to a user-selected file."""
+        log_file = self.log_file_combo.currentData()
+        if not log_file:
+            QMessageBox.warning(self, 'No Log File', 'No log file selected.')
+            return
+        
+        # Open file dialog for export location
+        export_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            'Export Logs',
+            f'alarmify_logs_export.log',
+            'Log Files (*.log);;Text Files (*.txt);;All Files (*.*)'
+        )
+        
+        if export_path:
+            try:
+                import shutil
+                shutil.copy2(log_file, export_path)
+                logger.info(f'Logs exported to: {export_path}')
+                QMessageBox.information(
+                    self,
+                    'Export Successful',
+                    f'Logs exported to:\n{export_path}'
+                )
+            except Exception as e:
+                logger.error(f'Failed to export logs: {e}', exc_info=True)
+                QMessageBox.critical(
+                    self,
+                    'Export Failed',
+                    f'Could not export logs: {e}'
+                )
+    
+    def _open_log_folder(self):
+        """Open the logs folder in the file explorer."""
+        from logging_config import LOG_DIR
+        import subprocess
+        import platform
+        
+        try:
+            if platform.system() == 'Windows':
+                os.startfile(LOG_DIR)
+            elif platform.system() == 'Darwin':  # macOS
+                subprocess.Popen(['open', LOG_DIR])
+            else:  # Linux
+                subprocess.Popen(['xdg-open', LOG_DIR])
+            logger.info('Opened logs folder in file explorer')
+        except Exception as e:
+            logger.error(f'Failed to open log folder: {e}', exc_info=True)
+            QMessageBox.warning(
+                self,
+                'Error',
+                f'Could not open log folder: {e}'
             )

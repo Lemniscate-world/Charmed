@@ -14,63 +14,11 @@ Output:
 import subprocess  # Run external commands
 import sys         # System-specific parameters
 import shutil      # File operations
-import logging     # Structured logging
-from logging.handlers import RotatingFileHandler  # Log rotation
 from pathlib import Path  # Path manipulation
-from datetime import datetime  # Timestamp generation
+from logging_config import setup_logging, get_logger
 
-
-def setup_logging():
-    """
-    Configure logging with rotating file handler.
-    
-    Creates a logs directory in the application folder and sets up
-    a rotating file handler with timestamped log files. Logs are
-    configured with INFO level and include contextual information.
-    """
-    # Get script directory
-    script_dir = Path(__file__).parent.resolve()
-    
-    # Create logs directory if it doesn't exist
-    logs_dir = script_dir / 'logs'
-    logs_dir.mkdir(exist_ok=True)
-    
-    # Generate timestamped log filename
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = logs_dir / f'build_{timestamp}.log'
-    
-    # Configure rotating file handler (10MB per file, keep 5 backups)
-    file_handler = RotatingFileHandler(
-        log_file,
-        maxBytes=10 * 1024 * 1024,  # 10 MB
-        backupCount=5,
-        encoding='utf-8'
-    )
-    file_handler.setLevel(logging.DEBUG)
-    
-    # Configure console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    
-    # Create formatter with timestamp, level, module, and message
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    file_handler.setFormatter(formatter)
-    console_handler.setFormatter(formatter)
-    
-    # Get logger for this module
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
-    return logger
-
-
-# Initialize logger for this module
-logger = setup_logging()
+setup_logging()
+logger = get_logger(__name__)
 
 
 def main():

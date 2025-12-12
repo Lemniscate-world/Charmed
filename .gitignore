@@ -34,7 +34,8 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs - Log directory created by logging_config
+logs/
 *.log
 logs/
 

@@ -31,9 +31,12 @@ import queue  # Thread-safe queue for command pattern
 from functools import wraps  # Decorator utilities
 from spotipy.exceptions import SpotifyException  # Spotify API exceptions
 import time  # For retry delays
+from logging_config import get_logger
 
 # Load environment variables from .env file at module import time
 load_dotenv()
+
+logger = get_logger(__name__)
 
 
 def thread_safe_api_call(func):
@@ -86,12 +89,15 @@ class SpotifyAPI:
 
         # Validate that all required credentials are present
         if not client_id or not client_secret or not redirect_uri:
+            logger.error('Spotify credentials not configured')
             raise RuntimeError(
                 "Spotify credentials not set. Set SPOTIPY_CLIENT_ID, "
                 "SPOTIPY_CLIENT_SECRET, and SPOTIPY_REDIRECT_URI environment "
                 "variables or provide a .env file."
             )
 
+        logger.info('Initializing Spotify API with provided credentials')
+        
         # Create OAuth manager - handles token caching and refresh
         self.auth_manager = SpotifyOAuth(
             client_id=client_id,
@@ -118,6 +124,7 @@ class SpotifyAPI:
         if token_info:
             # Token exists and is valid (or was refreshed)
             self.sp = spotipy.Spotify(auth_manager=self.auth_manager)
+            logger.info('Using cached Spotify authentication token')
 
     def authenticate(self, open_browser=True, timeout=120):
         """
@@ -137,6 +144,8 @@ class SpotifyAPI:
         Raises:
             RuntimeError: If OAuth callback fails or times out.
         """
+        logger.info('Starting Spotify OAuth authentication')
+        
         # Check for cached token first (avoids re-auth if already logged in)
         # Using validate_token with cache_handler to avoid deprecation warning
         cached_token = self.auth_manager.cache_handler.get_cached_token()
@@ -144,14 +153,19 @@ class SpotifyAPI:
         if token_info:
             # Create Spotify client with cached token
             self.sp = spotipy.Spotify(auth_manager=self.auth_manager)
+            logger.info('Authentication successful using cached token')
             return token_info
 
         # No cached token - need to perform OAuth flow
+        logger.info('No cached token found, initiating OAuth flow')
+        
         # Get the authorization URL (Spotify's consent page)
         auth_url = self.auth_manager.get_authorize_url()
+        logger.debug(f'OAuth authorization URL: {auth_url}')
 
         # Open browser for user to authorize
         if open_browser:
+            logger.info('Opening browser for user authorization')
             webbrowser.open(auth_url)
 
         # Parse redirect URI to get host and port for callback server
@@ -190,26 +204,32 @@ class SpotifyAPI:
                 pass  # Silent - don't print to console
 
         # Start local HTTP server to receive OAuth callback
+        logger.info(f'Starting OAuth callback server on {host}:{port}')
         httpd = HTTPServer((host, port), OAuthHandler)
         httpd.timeout = timeout  # Set timeout for handle_request
 
         # Wait for single request (the OAuth callback)
+        logger.info(f'Waiting for OAuth callback (timeout: {timeout}s)')
         httpd.handle_request()
 
         # Retrieve authorization code from server
         code = getattr(httpd, 'auth_code', None)
         if not code:
+            logger.error('OAuth callback failed: no authorization code received')
             raise RuntimeError(
                 'Failed to receive authorization code during Spotify OAuth flow. '
                 'Make sure the redirect URI matches your Spotify app settings.'
             )
 
+        logger.info('Authorization code received, exchanging for access token')
+        
         # Exchange authorization code for access token
         token_info = self.auth_manager.get_access_token(code)
 
         # Create Spotify client with new token
         self.sp = spotipy.Spotify(auth_manager=self.auth_manager)
-
+        
+        logger.info('Spotify authentication completed successfully')
         return token_info
 
     @thread_safe_api_call
@@ -347,8 +367,10 @@ class SpotifyAPI:
             RuntimeError: If not authenticated or API call fails.
         """
         if not self.sp:
+            logger.error('Attempted to get playlists without authentication')
             raise RuntimeError('Not authenticated with Spotify. Please log in first.')
 
+        logger.info('Fetching user playlists with detailed metadata')
         try:
             playlists = []
             results = self._retry_api_call(self.sp.current_user_playlists)
@@ -376,6 +398,7 @@ class SpotifyAPI:
                 else:
                     results = None
 
+            logger.info(f'Retrieved {len(playlists)} playlists')
             return playlists
         except SpotifyException as e:
             raise RuntimeError(f'Failed to fetch playlists from Spotify: {e}')
@@ -397,8 +420,11 @@ class SpotifyAPI:
             RuntimeError: If not authenticated, no active device, or playlist not found.
         """
         if not self.sp:
+            logger.error('Attempted to play playlist without authentication')
             raise RuntimeError('Not authenticated with Spotify. Please log in first.')
 
+        logger.info(f'Attempting to play playlist: {playlist_name}')
+        
         try:
             # Find playlist URI by name
             results = self._retry_api_call(self.sp.current_user_playlists)
@@ -407,9 +433,11 @@ class SpotifyAPI:
             for item in results.get('items', []):
                 if item.get('name') == playlist_name:
                     playlist_uri = item.get('uri')
+                    logger.debug(f'Found playlist URI: {playlist_uri}')
                     break
             
             if not playlist_uri:
+                logger.error(f'Playlist "{playlist_name}" not found')
                 raise RuntimeError(f'Playlist "{playlist_name}" not found in your library')
             
             # Check for active device before attempting playback
@@ -434,6 +462,7 @@ class SpotifyAPI:
             
             # Start playback with playlist context
             self._retry_api_call(self.sp.start_playback, context_uri=playlist_uri)
+            logger.info(f'Started playback of playlist: {playlist_name}')
             
         except SpotifyException as e:
             if hasattr(e, 'http_status'):
@@ -465,8 +494,11 @@ class SpotifyAPI:
             RuntimeError: If not authenticated, no active device, or playback fails.
         """
         if not self.sp:
+            logger.error('Attempted to play playlist by URI without authentication')
             raise RuntimeError('Not authenticated with Spotify. Please log in first.')
 
+        logger.info(f'Attempting to play playlist by URI: {playlist_uri}')
+        
         try:
             # Check for active device before attempting playback
             devices = self._retry_api_call(self.sp.devices)
@@ -489,6 +521,7 @@ class SpotifyAPI:
                     )
             
             self._retry_api_call(self.sp.start_playback, context_uri=playlist_uri)
+            logger.info(f'Successfully started playback by URI: {playlist_uri}')
             
         except SpotifyException as e:
             if hasattr(e, 'http_status'):
@@ -518,12 +551,14 @@ class SpotifyAPI:
             RuntimeError: If not authenticated, no active device, or operation fails.
         """
         if not self.sp:
+            logger.error('Attempted to set volume without authentication')
             raise RuntimeError('Not authenticated with Spotify. Please log in first.')
 
+        # Clamp volume to valid range
+        volume = max(0, min(100, int(volume_percent)))
+        logger.debug(f'Setting Spotify volume to {volume}%')
+        
         try:
-            # Clamp volume to valid range
-            volume = max(0, min(100, int(volume_percent)))
-            
             # Check for active device
             devices = self._retry_api_call(self.sp.devices)
             active_device = None
@@ -536,6 +571,7 @@ class SpotifyAPI:
                 raise RuntimeError('No active Spotify device found to set volume')
             
             self._retry_api_call(self.sp.volume, volume)
+            logger.info(f'Volume set to {volume}%')
             
         except SpotifyException as e:
             if hasattr(e, 'http_status') and e.http_status == 403:
