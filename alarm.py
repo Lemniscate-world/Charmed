@@ -1,4 +1,4 @@
-"""
+﻿"""
 alarm.py - Alarm scheduling module for Alarmify
 
 This module provides the Alarm class for scheduling playlist alarms.
@@ -233,43 +233,43 @@ class Alarm:
         if 'no active device' in error_lower or 'device' in error_lower:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                '⚠ No active Spotify device found.\n'
+                'ÔÜá No active Spotify device found.\n'
                 'Open Spotify on any device and start playing something, then try again.'
             )
         elif 'authentication' in error_lower or 'token' in error_lower or 'unauthorized' in error_lower:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                '⚠ Authentication expired.\n'
+                'ÔÜá Authentication expired.\n'
                 'Please log in to Spotify again in the Alarmify app.'
             )
         elif 'premium' in error_lower or 'restriction' in error_lower:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                '⚠ Spotify Premium required.\n'
+                'ÔÜá Spotify Premium required.\n'
                 'Playback control requires a Spotify Premium account.'
             )
         elif 'rate' in error_lower or 'limit' in error_lower or '429' in error_msg:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                '⚠ Rate limit exceeded.\n'
+                'ÔÜá Rate limit exceeded.\n'
                 'Too many requests to Spotify. Wait a few minutes and try again.'
             )
         elif 'network' in error_lower or 'connection' in error_lower or 'timeout' in error_lower:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                '⚠ Network error.\n'
+                'ÔÜá Network error.\n'
                 'Check your internet connection and try again.'
             )
         elif 'not found' in error_lower or '404' in error_msg:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                '⚠ Playlist not found.\n'
+                'ÔÜá Playlist not found.\n'
                 'The playlist may have been deleted or made private.'
             )
         else:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                f'⚠ Error: {error_msg}\n\n'
+                f'ÔÜá Error: {error_msg}\n\n'
                 'Check your Spotify connection and device status.'
             )
 

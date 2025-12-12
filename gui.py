@@ -6,6 +6,8 @@ This module provides the main application window and all UI components:
 - PlaylistItemWidget: Custom widget for playlist items with thumbnails
 - SettingsDialog: Dialog for Spotify API credentials
 - AlarmManagerDialog: Dialog to view/delete scheduled alarms
+- LogViewerDialog: Dialog to view and export application logs
+- CrashReportDialog: Dialog to display crash details and save crash logs
 
 Dependencies:
 - PyQt5: Qt bindings for Python GUI
@@ -42,7 +44,9 @@ from PyQt5.QtWidgets import (
     QStatusBar,
     QCheckBox,
     QButtonGroup,
-    QRadioButton
+    QRadioButton,
+    QTextEdit,
+    QFileDialog
 )
 from PyQt5.QtGui import QFont, QPixmap, QIcon, QPalette, QColor
 from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QByteArray, QTimer
@@ -52,6 +56,8 @@ import requests
 from dotenv import load_dotenv
 from datetime import datetime
 import re
+import traceback
+import sys
 
 # Local module imports
 from spotify_api.spotify_api import ThreadSafeSpotifyAPI  # Thread-safe Spotify API wrapper
@@ -1389,3 +1395,111 @@ class LogViewerDialog(QDialog):
                 'Error',
                 f'Could not open log folder: {e}'
             )
+
+
+class CrashReportDialog(QDialog):
+    """
+    Dialog to display crash/error details and save crash reports.
+    
+    Shows:
+    - Error message and type
+    - Full stack trace
+    - Option to save crash report to file
+    - Copy to clipboard functionality
+    """
+    
+    def __init__(self, exc_type, exc_value, exc_traceback, parent=None):
+        super().__init__(parent)
+        self.exc_type = exc_type
+        self.exc_value = exc_value
+        self.exc_traceback = exc_traceback
+        
+        self.setWindowTitle('Application Error')
+        self.setMinimumSize(700, 500)
+        self.setModal(True)
+        
+        self._build_ui()
+    
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        
+        error_icon = QLabel('\u26A0')
+        error_icon.setFont(QFont('Arial', 48))
+        error_icon.setStyleSheet('color: #FF6B6B;')
+        error_icon.setAlignment(Qt.AlignCenter)
+        layout.addWidget(error_icon)
+        
+        title = QLabel('An unexpected error occurred')
+        title.setFont(QFont('Arial', 16, QFont.Bold))
+        title.setAlignment(Qt.AlignCenter)
+        layout.addWidget(title)
+        
+        error_msg = QLabel(f'{self.exc_type.__name__}: {str(self.exc_value)}')
+        error_msg.setWordWrap(True)
+        error_msg.setStyleSheet('color: #FF6B6B; padding: 10px;')
+        error_msg.setAlignment(Qt.AlignCenter)
+        layout.addWidget(error_msg)
+        
+        details_label = QLabel('Error Details:')
+        details_label.setFont(QFont('Arial', 12, QFont.Bold))
+        layout.addWidget(details_label)
+        
+        self.details_text = QTextEdit()
+        self.details_text.setReadOnly(True)
+        self.details_text.setFont(QFont('Courier New', 9))
+        
+        traceback_text = ''.join(traceback.format_exception(
+            self.exc_type,
+            self.exc_value,
+            self.exc_traceback
+        ))
+        self.details_text.setPlainText(traceback_text)
+        
+        layout.addWidget(self.details_text)
+        
+        btn_layout = QHBoxLayout()
+        
+        save_btn = QPushButton('Save Crash Report')
+        save_btn.clicked.connect(self._save_crash_report)
+        btn_layout.addWidget(save_btn)
+        
+        copy_btn = QPushButton('Copy to Clipboard')
+        copy_btn.clicked.connect(self._copy_to_clipboard)
+        btn_layout.addWidget(copy_btn)
+        
+        btn_layout.addStretch()
+        
+        close_btn = QPushButton('Close')
+        close_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(close_btn)
+        
+        layout.addLayout(btn_layout)
+    
+    def _save_crash_report(self):
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            'Save Crash Report',
+            f'crash_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt',
+            'Text Files (*.txt);;All Files (*)'
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(f"Alarmify Crash Report\n")
+                f.write(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Error: {self.exc_type.__name__}: {str(self.exc_value)}\n")
+                f.write("=" * 80 + "\n\n")
+                f.write("Traceback:\n")
+                f.write(self.details_text.toPlainText())
+            
+            QMessageBox.information(self, 'Saved', f'Crash report saved to:\n{file_path}')
+        except Exception as e:
+            QMessageBox.critical(self, 'Save Failed', f'Failed to save crash report:\n{e}')
+    
+    def _copy_to_clipboard(self):
+        clipboard = QtWidgets.QApplication.clipboard()
+        clipboard.setText(self.details_text.toPlainText())
+        QMessageBox.information(self, 'Copied', 'Error details copied to clipboard')
