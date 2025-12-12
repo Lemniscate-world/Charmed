@@ -29,6 +29,8 @@ from spotipy.oauth2 import SpotifyOAuth  # OAuth2 authentication handler
 import threading  # Thread synchronization
 import queue  # Thread-safe queue for command pattern
 from functools import wraps  # Decorator utilities
+from spotipy.exceptions import SpotifyException  # Spotify API exceptions
+import time  # For retry delays
 
 # Load environment variables from .env file at module import time
 load_dotenv()
@@ -243,6 +245,62 @@ class SpotifyAPI:
         except Exception:
             return None
 
+    def _retry_api_call(self, func, *args, max_retries=3, retry_delay=1, **kwargs):
+        """
+        Execute an API call with retry logic for transient failures.
+        
+        Args:
+            func: Function to call
+            *args: Positional arguments for func
+            max_retries: Maximum number of retry attempts
+            retry_delay: Seconds to wait between retries
+            **kwargs: Keyword arguments for func
+            
+        Returns:
+            Result of the API call
+            
+        Raises:
+            Exception: If all retry attempts fail
+        """
+        last_exception = None
+        
+        for attempt in range(max_retries):
+            try:
+                return func(*args, **kwargs)
+            except SpotifyException as e:
+                last_exception = e
+                # Check if it's a transient error (5xx server errors, rate limiting, timeout)
+                if hasattr(e, 'http_status'):
+                    status = e.http_status
+                    # Retry on server errors (5xx) or rate limiting (429)
+                    if status >= 500 or status == 429:
+                        if attempt < max_retries - 1:
+                            wait_time = retry_delay * (attempt + 1)
+                            if status == 429 and hasattr(e, 'headers'):
+                                retry_after = e.headers.get('Retry-After')
+                                if retry_after:
+                                    wait_time = int(retry_after)
+                            time.sleep(wait_time)
+                            continue
+                    # Don't retry on client errors (4xx except 429)
+                    elif 400 <= status < 500:
+                        raise
+                # Retry on general network/connection errors
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (attempt + 1))
+                    continue
+            except Exception as e:
+                last_exception = e
+                # Retry on general network/connection errors
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise
+        
+        # All retries exhausted
+        if last_exception:
+            raise last_exception
+
     @thread_safe_api_call
     def get_playlists(self):
         """
@@ -252,15 +310,20 @@ class SpotifyAPI:
             list[str]: List of playlist names.
 
         Raises:
-            RuntimeError: If not authenticated.
+            RuntimeError: If not authenticated or API call fails.
         """
         if not self.sp:
-            raise RuntimeError('Spotify client not authenticated')
+            raise RuntimeError('Not authenticated with Spotify. Please log in first.')
 
-        results = self.sp.current_user_playlists()
-        # Extract just the names from playlist items
-        playlists = [item['name'] for item in results.get('items', [])]
-        return playlists
+        try:
+            results = self._retry_api_call(self.sp.current_user_playlists)
+            # Extract just the names from playlist items
+            playlists = [item['name'] for item in results.get('items', [])]
+            return playlists
+        except SpotifyException as e:
+            raise RuntimeError(f'Failed to fetch playlists from Spotify: {e}')
+        except Exception as e:
+            raise RuntimeError(f'Unexpected error fetching playlists: {e}')
 
     @thread_safe_api_call
     def get_playlists_detailed(self):
@@ -281,38 +344,43 @@ class SpotifyAPI:
                 - owner: Playlist owner's display name
 
         Raises:
-            RuntimeError: If not authenticated.
+            RuntimeError: If not authenticated or API call fails.
         """
         if not self.sp:
-            raise RuntimeError('Spotify client not authenticated')
+            raise RuntimeError('Not authenticated with Spotify. Please log in first.')
 
-        playlists = []
-        results = self.sp.current_user_playlists()
+        try:
+            playlists = []
+            results = self._retry_api_call(self.sp.current_user_playlists)
 
-        while results:
-            for item in results.get('items', []):
-                # Get first image URL if available (highest resolution)
-                images = item.get('images', [])
-                image_url = images[0]['url'] if images else None
+            while results:
+                for item in results.get('items', []):
+                    # Get first image URL if available (highest resolution)
+                    images = item.get('images', [])
+                    image_url = images[0]['url'] if images else None
 
-                # Build detailed playlist info
-                playlist_info = {
-                    'name': item.get('name', 'Unknown'),
-                    'id': item.get('id'),
-                    'uri': item.get('uri'),
-                    'track_count': item.get('tracks', {}).get('total', 0),
-                    'image_url': image_url,
-                    'owner': item.get('owner', {}).get('display_name', 'Unknown')
-                }
-                playlists.append(playlist_info)
+                    # Build detailed playlist info
+                    playlist_info = {
+                        'name': item.get('name', 'Unknown'),
+                        'id': item.get('id'),
+                        'uri': item.get('uri'),
+                        'track_count': item.get('tracks', {}).get('total', 0),
+                        'image_url': image_url,
+                        'owner': item.get('owner', {}).get('display_name', 'Unknown')
+                    }
+                    playlists.append(playlist_info)
 
-            # Check for next page of results
-            if results.get('next'):
-                results = self.sp.next(results)
-            else:
-                results = None
+                # Check for next page of results
+                if results.get('next'):
+                    results = self._retry_api_call(self.sp.next, results)
+                else:
+                    results = None
 
-        return playlists
+            return playlists
+        except SpotifyException as e:
+            raise RuntimeError(f'Failed to fetch playlists from Spotify: {e}')
+        except Exception as e:
+            raise RuntimeError(f'Unexpected error fetching playlists: {e}')
 
     @thread_safe_api_call
     def play_playlist(self, playlist_name):
@@ -326,22 +394,62 @@ class SpotifyAPI:
             playlist_name: Name of playlist to play.
 
         Raises:
-            RuntimeError: If not authenticated or no active device.
+            RuntimeError: If not authenticated, no active device, or playlist not found.
         """
         if not self.sp:
-            raise RuntimeError('Spotify client not authenticated')
+            raise RuntimeError('Not authenticated with Spotify. Please log in first.')
 
-        # Find playlist URI by name
-        results = self.sp.current_user_playlists()
-        for item in results.get('items', []):
-            if item.get('name') == playlist_name:
-                # Start playback with playlist context
-                # This plays on the user's active device
-                self.sp.start_playback(context_uri=item.get('uri'))
-                return
-
-        # Playlist not found - could raise exception or log warning
-        raise RuntimeError(f'Playlist "{playlist_name}" not found')
+        try:
+            # Find playlist URI by name
+            results = self._retry_api_call(self.sp.current_user_playlists)
+            playlist_uri = None
+            
+            for item in results.get('items', []):
+                if item.get('name') == playlist_name:
+                    playlist_uri = item.get('uri')
+                    break
+            
+            if not playlist_uri:
+                raise RuntimeError(f'Playlist "{playlist_name}" not found in your library')
+            
+            # Check for active device before attempting playback
+            devices = self._retry_api_call(self.sp.devices)
+            active_device = None
+            for device in devices.get('devices', []):
+                if device.get('is_active'):
+                    active_device = device
+                    break
+            
+            if not active_device:
+                available_devices = [d.get('name') for d in devices.get('devices', [])]
+                if available_devices:
+                    raise RuntimeError(
+                        f'No active Spotify device found. Available devices: {", ".join(available_devices)}. '
+                        'Please start Spotify on one of your devices.'
+                    )
+                else:
+                    raise RuntimeError(
+                        'No Spotify devices found. Please open Spotify on your phone, computer, or another device.'
+                    )
+            
+            # Start playback with playlist context
+            self._retry_api_call(self.sp.start_playback, context_uri=playlist_uri)
+            
+        except SpotifyException as e:
+            if hasattr(e, 'http_status'):
+                if e.http_status == 403:
+                    raise RuntimeError(
+                        'Playback requires Spotify Premium. Please upgrade your account.'
+                    )
+                elif e.http_status == 404:
+                    raise RuntimeError(
+                        'No active device found. Please start Spotify on one of your devices.'
+                    )
+            raise RuntimeError(f'Failed to start playback: {e}')
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f'Unexpected error during playback: {e}')
 
     @thread_safe_api_call
     def play_playlist_by_uri(self, playlist_uri):
@@ -354,12 +462,49 @@ class SpotifyAPI:
             playlist_uri: Spotify URI (e.g., 'spotify:playlist:xxxxx')
 
         Raises:
-            RuntimeError: If not authenticated or no active device.
+            RuntimeError: If not authenticated, no active device, or playback fails.
         """
         if not self.sp:
-            raise RuntimeError('Spotify client not authenticated')
+            raise RuntimeError('Not authenticated with Spotify. Please log in first.')
 
-        self.sp.start_playback(context_uri=playlist_uri)
+        try:
+            # Check for active device before attempting playback
+            devices = self._retry_api_call(self.sp.devices)
+            active_device = None
+            for device in devices.get('devices', []):
+                if device.get('is_active'):
+                    active_device = device
+                    break
+            
+            if not active_device:
+                available_devices = [d.get('name') for d in devices.get('devices', [])]
+                if available_devices:
+                    raise RuntimeError(
+                        f'No active Spotify device found. Available devices: {", ".join(available_devices)}. '
+                        'Please start Spotify on one of your devices.'
+                    )
+                else:
+                    raise RuntimeError(
+                        'No Spotify devices found. Please open Spotify on your phone, computer, or another device.'
+                    )
+            
+            self._retry_api_call(self.sp.start_playback, context_uri=playlist_uri)
+            
+        except SpotifyException as e:
+            if hasattr(e, 'http_status'):
+                if e.http_status == 403:
+                    raise RuntimeError(
+                        'Playback requires Spotify Premium. Please upgrade your account.'
+                    )
+                elif e.http_status == 404:
+                    raise RuntimeError(
+                        'No active device found. Please start Spotify on one of your devices.'
+                    )
+            raise RuntimeError(f'Failed to start playback: {e}')
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f'Unexpected error during playback: {e}')
 
     @thread_safe_api_call
     def set_volume(self, volume_percent):
@@ -370,14 +515,36 @@ class SpotifyAPI:
             volume_percent: Volume level from 0 to 100.
 
         Raises:
-            RuntimeError: If not authenticated or no active device.
+            RuntimeError: If not authenticated, no active device, or operation fails.
         """
         if not self.sp:
-            raise RuntimeError('Spotify client not authenticated')
+            raise RuntimeError('Not authenticated with Spotify. Please log in first.')
 
-        # Clamp volume to valid range
-        volume = max(0, min(100, int(volume_percent)))
-        self.sp.volume(volume)
+        try:
+            # Clamp volume to valid range
+            volume = max(0, min(100, int(volume_percent)))
+            
+            # Check for active device
+            devices = self._retry_api_call(self.sp.devices)
+            active_device = None
+            for device in devices.get('devices', []):
+                if device.get('is_active'):
+                    active_device = device
+                    break
+            
+            if not active_device:
+                raise RuntimeError('No active Spotify device found to set volume')
+            
+            self._retry_api_call(self.sp.volume, volume)
+            
+        except SpotifyException as e:
+            if hasattr(e, 'http_status') and e.http_status == 403:
+                raise RuntimeError('Volume control requires Spotify Premium')
+            raise RuntimeError(f'Failed to set volume: {e}')
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f'Unexpected error setting volume: {e}')
 
     @thread_safe_api_call
     def get_active_device(self):
@@ -399,6 +566,25 @@ class SpotifyAPI:
             return None
         except Exception:
             return None
+    
+    @thread_safe_api_call
+    def get_all_devices(self):
+        """
+        Get all available Spotify playback devices.
+
+        Returns:
+            list[dict]: List of device info dictionaries with 'name', 'type', 
+                       'volume_percent', 'is_active', etc.
+                       Returns empty list if no devices or on error.
+        """
+        if not self.sp:
+            return []
+
+        try:
+            result = self.sp.devices()
+            return result.get('devices', [])
+        except Exception:
+            return []
 
     def start_command_queue_worker(self):
         """

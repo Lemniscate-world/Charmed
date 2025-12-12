@@ -21,6 +21,7 @@ Dependencies:
 import schedule  # Job scheduling library
 import time      # Time-related functions (sleep)
 import threading  # Background thread execution
+import re        # Regular expressions for time validation
 
 
 class Alarm:
@@ -33,10 +34,17 @@ class Alarm:
     Attributes:
         alarms: List of alarm info dictionaries with time, playlist, volume.
         scheduler_running: Boolean flag indicating if scheduler thread is active.
+        alarm_failure_callback: Optional callback function for alarm failures.
     """
 
-    def __init__(self):
-        """Initialize the alarm manager with empty alarm list."""
+    def __init__(self, alarm_failure_callback=None):
+        """
+        Initialize the alarm manager with empty alarm list.
+        
+        Args:
+            alarm_failure_callback: Optional function to call when alarm fails.
+                Should accept (time_str, playlist, error_message) arguments.
+        """
         # List to store alarm metadata for UI display
         # Each entry: {'time': 'HH:MM', 'playlist': 'name', 'playlist_uri': 'uri', 'volume': 80, 'job': schedule.Job}
         self.alarms = []
@@ -46,6 +54,29 @@ class Alarm:
 
         # Reference to scheduler thread
         self.scheduler_thread = None
+        
+        # Callback for alarm failures
+        self.alarm_failure_callback = alarm_failure_callback
+
+    def validate_time_format(self, time_str):
+        """
+        Validate alarm time format.
+        
+        Args:
+            time_str: Time string to validate.
+            
+        Returns:
+            tuple: (is_valid: bool, error_message: str or None)
+        """
+        if not time_str or not isinstance(time_str, str):
+            return False, "Time cannot be empty"
+        
+        # Check HH:MM format
+        pattern = r'^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$'
+        if not re.match(pattern, time_str):
+            return False, "Invalid time format. Please use HH:MM format (e.g., 09:30 or 14:45)"
+        
+        return True, None
 
         # Thread safety: Lock for protecting alarm list modifications
         self._alarms_lock = threading.Lock()
@@ -63,14 +94,23 @@ class Alarm:
             playlist_uri: Spotify URI of the playlist to play.
             spotify_api: SpotifyAPI instance for playback control.
             volume: Volume level 0-100 (default 80).
+            
+        Raises:
+            ValueError: If time format is invalid.
         """
+        # Validate time format
+        is_valid, error_msg = self.validate_time_format(time_str)
+        if not is_valid:
+            raise ValueError(error_msg)
+        
         # Create the scheduled job - runs daily at specified time
         # The job calls play_playlist with playlist URI, API, and volume
         job = schedule.every().day.at(time_str).do(
             self.play_playlist,      # Function to call
             playlist_uri,            # Playlist URI argument
             spotify_api,             # API instance argument
-            volume                   # Volume argument
+            volume,                  # Volume argument
+            time_str                 # Time string for error reporting
         )
 
         # Store alarm info for management UI (thread-safe)
