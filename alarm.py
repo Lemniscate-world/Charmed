@@ -20,9 +20,10 @@ Dependencies:
 - threading: Background execution and synchronization
 """
 
-import schedule
-import time
-import threading
+import schedule  # Job scheduling library
+import time      # Time-related functions (sleep)
+import threading  # Background thread execution
+from datetime import datetime  # Date and time utilities
 import re
 from logging_config import get_logger
 
@@ -312,6 +313,34 @@ class Alarm:
             ]
             logger.debug(f"Retrieved {len(alarm_list)} alarms")
             return alarm_list
+
+    def get_next_alarm_time(self):
+        """
+        Get the next scheduled alarm trigger time.
+
+        Returns:
+            str: Next alarm time in human-readable format, or None if no alarms.
+        """
+        with self._alarms_lock:
+            if not self.alarms:
+                return None
+            
+            next_job = schedule.next_run()
+            if next_job:
+                now = datetime.now()
+                delta = next_job - now
+                
+                hours = int(delta.total_seconds() // 3600)
+                minutes = int((delta.total_seconds() % 3600) // 60)
+                
+                if hours > 0:
+                    return f"in {hours}h {minutes}m"
+                elif minutes > 0:
+                    return f"in {minutes}m"
+                else:
+                    return "soon"
+            
+            return None
 
     def remove_alarm(self, time_str):
         """

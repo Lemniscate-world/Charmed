@@ -1,4 +1,4 @@
-"""
+﻿"""
 gui.py - Main GUI module for Alarmify
 
 This module provides the main application window and all UI components:
@@ -35,14 +35,22 @@ from PyQt5.QtWidgets import (
     QTableWidgetItem,
     QHeaderView,
     QAbstractItemView,
-    QSystemTrayIcon
+    QSystemTrayIcon,
+    QMenu,
+    QAction,
+    QComboBox,
+    QStatusBar,
+    QCheckBox,
+    QButtonGroup,
+    QRadioButton
 )
-from PyQt5.QtGui import QFont, QPixmap, QIcon
+from PyQt5.QtGui import QFont, QPixmap, QIcon, QPalette, QColor
 from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QByteArray, QTimer
 from pathlib import Path
 import os
 import requests
 from dotenv import load_dotenv
+from datetime import datetime
 import re
 
 from spotify_api.spotify_api import SpotifyAPI
@@ -129,6 +137,7 @@ class PlaylistItemWidget(QWidget):
         super().__init__(parent)
 
         self.playlist_data = playlist_data
+        self._is_hovered = False
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -163,6 +172,8 @@ class PlaylistItemWidget(QWidget):
         layout.addLayout(text_layout)
         layout.addStretch()
 
+        self.setMouseTracking(True)
+
     def set_image(self, pixmap):
         """
         Set the playlist cover image.
@@ -178,6 +189,37 @@ class PlaylistItemWidget(QWidget):
             )
             self.image_label.setPixmap(scaled)
 
+    def enterEvent(self, event):
+        """Handle mouse enter event for hover effect."""
+        self._is_hovered = True
+        self.setStyleSheet("QWidget { background-color: #2a2a2a; border-radius: 4px; }")
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """Handle mouse leave event to remove hover effect."""
+        self._is_hovered = False
+        self.setStyleSheet("")
+        super().leaveEvent(event)
+
+    def contextMenuEvent(self, event):
+        """Show context menu for playlist actions."""
+        menu = QMenu(self)
+        
+        play_action = QAction("Play Now", self)
+        play_action.triggered.connect(self._play_playlist)
+        menu.addAction(play_action)
+        
+        menu.exec_(event.globalPos())
+
+    def _play_playlist(self):
+        """Play this playlist immediately for testing."""
+        parent = self.parent()
+        while parent and not isinstance(parent, AlarmApp):
+            parent = parent.parent()
+        
+        if parent and isinstance(parent, AlarmApp):
+            parent.play_playlist_now(self.playlist_data.get('uri'))
+
 
 class AlarmApp(QtWidgets.QMainWindow):
     """
@@ -190,6 +232,9 @@ class AlarmApp(QtWidgets.QMainWindow):
     - Volume control slider
     - Alarm management (view/delete)
     - Settings dialog for credentials
+    - System tray icon support
+    - Device selector
+    - Theme toggle
     """
 
     def __init__(self):
@@ -200,17 +245,11 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         self.image_loaders = []
         self.playlist_widgets = {}
-
+        self.current_theme = 'dark'
+        self.last_sync_time = None
+        
         self._build_ui()
-
-        style_path = Path(__file__).resolve().parent / 'spotify_style.qss'
-        if style_path.exists():
-            try:
-                with open(style_path, 'r', encoding='utf-8') as f:
-                    self.setStyleSheet(f.read())
-                logger.debug('Applied Spotify stylesheet')
-            except Exception as e:
-                logger.warning(f'Failed to load stylesheet: {e}')
+        self._apply_theme()
 
         try:
             self.spotify_api = SpotifyAPI()
@@ -230,6 +269,9 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.settings_button.clicked.connect(self.open_settings)
         self.manage_alarms_button.clicked.connect(self.open_alarm_manager)
         self.view_logs_button.clicked.connect(self.open_log_viewer)
+        self.device_selector.currentIndexChanged.connect(self._on_device_changed)
+        self.refresh_devices_button.clicked.connect(self._refresh_devices)
+        self.playlist_search.textChanged.connect(self._filter_playlists)
 
         if not self.spotify_api:
             self.login_button.setEnabled(False)
@@ -238,72 +280,20 @@ class AlarmApp(QtWidgets.QMainWindow):
         self._setup_system_tray()
         self._update_auth_status()
         self._start_device_status_monitor()
+        
+        self.alarm_preview_timer = QTimer(self)
+        self.alarm_preview_timer.timeout.connect(self._update_alarm_preview)
+        self.alarm_preview_timer.start(30000)
 
         if self.spotify_api and self.spotify_api.is_authenticated():
             logger.info('Auto-loading playlists (cached authentication)')
             self._load_playlists()
-
-    def _setup_system_tray(self):
-        """Setup system tray icon for notifications."""
-        if not QSystemTrayIcon.isSystemTrayAvailable():
-            self.tray_icon = None
-            return
-
-        self.tray_icon = QSystemTrayIcon(self)
-        
-        icon_path = Path(__file__).resolve().parent / 'icon.png'
-        if icon_path.exists():
-            self.tray_icon.setIcon(QIcon(str(icon_path)))
-        else:
-            self.tray_icon.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
-        
-        self.tray_icon.setToolTip('Alarmify')
-        self.tray_icon.show()
-
-    def show_tray_notification(self, title, message, icon_type=QSystemTrayIcon.Information):
-        """
-        Show a system tray notification.
-
-        Args:
-            title: Notification title.
-            message: Notification message.
-            icon_type: QSystemTrayIcon icon type (Information, Warning, Critical).
-        """
-        if self.tray_icon and self.tray_icon.supportsMessages():
-            self.tray_icon.showMessage(title, message, icon_type, 5000)
-
-    def _start_device_status_monitor(self):
-        """Start periodic monitoring of active Spotify device."""
-        self.device_status_timer = QTimer(self)
-        self.device_status_timer.timeout.connect(self._update_device_status)
-        self.device_status_timer.start(10000)
-        self._update_device_status()
-
-    def _update_device_status(self):
-        """Update the device status indicator in the UI header."""
-        if not self.spotify_api or not self.spotify_api.is_authenticated():
-            self.device_status_label.setText('No active device')
-            self.device_status_label.setStyleSheet("color: #B3B3B3;")
-            return
-
-        try:
-            device = self.spotify_api.get_active_device()
-            if device:
-                device_name = device.get('name', 'Unknown Device')
-                device_type = device.get('type', 'Device')
-                self.device_status_label.setText(f'🔊 {device_name} ({device_type})')
-                self.device_status_label.setStyleSheet("color: #1DB954;")
-            else:
-                self.device_status_label.setText('No active device')
-                self.device_status_label.setStyleSheet("color: #FFA500;")
-        except Exception:
-            self.device_status_label.setText('Device check failed')
-            self.device_status_label.setStyleSheet("color: #B3B3B3;")
+            self._refresh_devices()
 
     def _build_ui(self):
         """Build the complete UI layout programmatically."""
         self.setWindowTitle('Alarmify')
-        self.setMinimumSize(700, 500)
+        self.setMinimumSize(800, 600)
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -354,10 +344,16 @@ class AlarmApp(QtWidgets.QMainWindow):
         playlist_header.setStyleSheet("color: #FFFFFF;")
         left_panel.addWidget(playlist_header)
 
+        self.playlist_search = QLineEdit()
+        self.playlist_search.setPlaceholderText('Search playlists...')
+        self.playlist_search.setObjectName('playlistSearch')
+        left_panel.addWidget(self.playlist_search)
+
         self.playlist_list = QListWidget()
         self.playlist_list.setObjectName('playlistList')
         self.playlist_list.setMinimumWidth(350)
         self.playlist_list.setSpacing(2)
+        self.playlist_list.setContextMenuPolicy(Qt.CustomContextMenu)
         left_panel.addWidget(self.playlist_list)
 
         btn_layout = QHBoxLayout()
@@ -376,6 +372,23 @@ class AlarmApp(QtWidgets.QMainWindow):
         right_panel = QVBoxLayout()
         right_panel.setSpacing(16)
 
+        device_label = QLabel('Playback Device')
+        device_label.setFont(QFont('Arial', 14, QFont.Bold))
+        device_label.setStyleSheet("color: #FFFFFF;")
+        right_panel.addWidget(device_label)
+
+        device_row = QHBoxLayout()
+        self.device_selector = QComboBox()
+        self.device_selector.setObjectName('deviceSelector')
+        device_row.addWidget(self.device_selector, stretch=1)
+
+        self.refresh_devices_button = QPushButton('\u21bb')
+        self.refresh_devices_button.setFixedSize(36, 36)
+        self.refresh_devices_button.setToolTip('Refresh devices')
+        device_row.addWidget(self.refresh_devices_button)
+
+        right_panel.addLayout(device_row)
+
         time_label = QLabel('Alarm Time')
         time_label.setFont(QFont('Arial', 14, QFont.Bold))
         time_label.setStyleSheet("color: #FFFFFF;")
@@ -387,6 +400,10 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.time_input.setFont(QFont('Arial', 18))
         self.time_input.setMinimumHeight(50)
         right_panel.addWidget(self.time_input)
+
+        self.alarm_preview_label = QLabel('Next alarm: None')
+        self.alarm_preview_label.setStyleSheet("color: #B3B3B3; font-style: italic;")
+        right_panel.addWidget(self.alarm_preview_label)
 
         volume_label = QLabel('Alarm Volume')
         volume_label.setFont(QFont('Arial', 14, QFont.Bold))
@@ -423,9 +440,172 @@ class AlarmApp(QtWidgets.QMainWindow):
         content.addLayout(right_panel, stretch=1)
         root_layout.addLayout(content)
 
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.setObjectName('statusBar')
+        
+        self.connection_status_label = QLabel('Disconnected')
+        self.sync_time_label = QLabel('Last sync: Never')
+        
+        self.status_bar.addPermanentWidget(self.connection_status_label)
+        self.status_bar.addPermanentWidget(QLabel('  |  '))
+        self.status_bar.addPermanentWidget(self.sync_time_label)
+
+    def _setup_system_tray(self):
+        """Setup system tray icon with menu."""
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+
+        self.tray_icon = QSystemTrayIcon(self)
+        
+        icon_path = Path(__file__).resolve().parent / 'Logo First Draft.png'
+        if icon_path.exists():
+            self.tray_icon.setIcon(QIcon(str(icon_path)))
+        else:
+            self.tray_icon.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
+
+        tray_menu = QMenu()
+        
+        show_action = QAction("Show", self)
+        show_action.triggered.connect(self._show_window)
+        tray_menu.addAction(show_action)
+        
+        hide_action = QAction("Hide", self)
+        hide_action.triggered.connect(self.hide)
+        tray_menu.addAction(hide_action)
+        
+        tray_menu.addSeparator()
+        
+        quit_action = QAction("Quit", self)
+        quit_action.triggered.connect(self._quit_application)
+        tray_menu.addAction(quit_action)
+        
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.activated.connect(self._tray_icon_activated)
+        self.tray_icon.show()
+
+    def _tray_icon_activated(self, reason):
+        """Handle tray icon clicks."""
+        if reason == QSystemTrayIcon.DoubleClick:
+            self._show_window()
+
+    def _show_window(self):
+        """Show and activate the main window."""
+        self.show()
+        self.activateWindow()
+        self.raise_()
+
+    def _quit_application(self):
+        """Quit the application completely."""
+        self._cleanup_resources()
+        QtWidgets.QApplication.quit()
+
+    def _apply_theme(self):
+        """Apply the current theme to the application."""
+        if self.current_theme == 'dark':
+            style_path = Path(__file__).resolve().parent / 'spotify_style.qss'
+            if style_path.exists():
+                try:
+                    with open(style_path, 'r', encoding='utf-8') as f:
+                        self.setStyleSheet(f.read())
+                except Exception:
+                    pass
+        else:
+            palette = QPalette()
+            palette.setColor(QPalette.Window, QColor(240, 240, 240))
+            palette.setColor(QPalette.WindowText, QColor(0, 0, 0))
+            palette.setColor(QPalette.Base, QColor(255, 255, 255))
+            palette.setColor(QPalette.AlternateBase, QColor(245, 245, 245))
+            palette.setColor(QPalette.Text, QColor(0, 0, 0))
+            palette.setColor(QPalette.Button, QColor(29, 185, 84))
+            palette.setColor(QPalette.ButtonText, QColor(0, 0, 0))
+            self.setPalette(palette)
+            
+            light_style = """
+            QMainWindow { background: #f0f0f0; }
+            QLabel { color: #333333; }
+            #appLogo { color: #1DB954; }
+            QListWidget#playlistList { 
+                background: #ffffff; 
+                border: 1px solid #cccccc;
+                color: #333333;
+            }
+            QListWidget::item:selected {
+                background: #1DB954;
+                color: #000000;
+            }
+            QPushButton {
+                background: #1DB954;
+                color: #000000;
+                border-radius: 6px;
+                padding: 8px 12px;
+                font-weight: 600;
+            }
+            QPushButton:disabled {
+                background: #cccccc;
+                color: #777777;
+            }
+            QTimeEdit#timeInput {
+                background: #ffffff;
+                color: #333333;
+                border: 1px solid #cccccc;
+                padding: 6px;
+            }
+            QLineEdit {
+                background: #ffffff;
+                color: #333333;
+                border: 1px solid #cccccc;
+                padding: 6px;
+            }
+            QComboBox {
+                background: #ffffff;
+                color: #333333;
+                border: 1px solid #cccccc;
+                padding: 6px;
+            }
+            QStatusBar {
+                background: #e0e0e0;
+                color: #333333;
+            }
+            """
+            self.setStyleSheet(light_style)
+
+    def _toggle_theme(self):
+        """Toggle between dark and light themes."""
+        self.current_theme = 'light' if self.current_theme == 'dark' else 'dark'
+        self._apply_theme()
+
     def _on_volume_changed(self, value):
         """Update volume label when slider moves."""
         self.volume_value_label.setText(f'{value}%')
+
+    def _start_device_status_monitor(self):
+        """Start periodic monitoring of active Spotify device."""
+        self.device_status_timer = QTimer(self)
+        self.device_status_timer.timeout.connect(self._update_device_status)
+        self.device_status_timer.start(10000)
+        self._update_device_status()
+
+    def _update_device_status(self):
+        """Update the device status indicator in the UI header."""
+        if not self.spotify_api or not self.spotify_api.is_authenticated():
+            self.device_status_label.setText('No active device')
+            self.device_status_label.setStyleSheet("color: #B3B3B3;")
+            return
+
+        try:
+            device = self.spotify_api.get_active_device()
+            if device:
+                device_name = device.get('name', 'Unknown Device')
+                device_type = device.get('type', 'Device')
+                self.device_status_label.setText(f'🔊 {device_name} ({device_type})')
+                self.device_status_label.setStyleSheet("color: #1DB954;")
+            else:
+                self.device_status_label.setText('No active device')
+                self.device_status_label.setStyleSheet("color: #FFA500;")
+        except Exception:
+            self.device_status_label.setText('Device check failed')
+            self.device_status_label.setStyleSheet("color: #B3B3B3;")
 
     def _update_auth_status(self):
         """Update the authentication status display."""
@@ -435,14 +615,71 @@ class AlarmApp(QtWidgets.QMainWindow):
                 name = user.get('display_name', 'User')
                 self.auth_status_label.setText(f'Connected as {name}')
                 self.auth_status_label.setStyleSheet("color: #1DB954;")
+                self.connection_status_label.setText('Connected')
             else:
                 self.auth_status_label.setText('Connected')
                 self.auth_status_label.setStyleSheet("color: #1DB954;")
+                self.connection_status_label.setText('Connected')
             self._update_device_status()
         else:
             self.auth_status_label.setText('Not connected')
             self.auth_status_label.setStyleSheet("color: #B3B3B3;")
+            self.connection_status_label.setText('Disconnected')
             self.device_status_label.setText('')
+
+    def _update_alarm_preview(self):
+        """Update the next alarm preview label."""
+        next_alarm = self.alarm.get_next_alarm_time()
+        if next_alarm:
+            self.alarm_preview_label.setText(f'Next alarm: {next_alarm}')
+        else:
+            self.alarm_preview_label.setText('Next alarm: None')
+
+    def _refresh_devices(self):
+        """Refresh the device selector with available Spotify devices."""
+        if not self.spotify_api or not self.spotify_api.is_authenticated():
+            return
+
+        devices = self.spotify_api.get_devices()
+        
+        self.device_selector.clear()
+        self.device_selector.addItem('Auto (Use Active Device)', None)
+        
+        for device in devices:
+            device_name = device.get('name', 'Unknown Device')
+            device_type = device.get('type', '')
+            is_active = device.get('is_active', False)
+            
+            if is_active:
+                device_name += ' (Active)'
+            
+            display_text = f"{device_name} - {device_type}"
+            self.device_selector.addItem(display_text, device.get('id'))
+
+    def _on_device_changed(self, index):
+        """Handle device selector change."""
+        device_id = self.device_selector.itemData(index)
+        if device_id and self.spotify_api:
+            try:
+                self.spotify_api.transfer_playback(device_id, force_play=False)
+                QMessageBox.information(self, 'Device Changed', 'Playback device updated.')
+            except Exception as e:
+                QMessageBox.warning(self, 'Error', f'Could not change device: {e}')
+
+    def _filter_playlists(self, text):
+        """Filter playlist list based on search text."""
+        search_text = text.lower()
+        
+        for i in range(self.playlist_list.count()):
+            item = self.playlist_list.item(i)
+            widget = self.playlist_list.itemWidget(item)
+            
+            if widget:
+                playlist_name = widget.playlist_data.get('name', '').lower()
+                if search_text in playlist_name:
+                    item.setHidden(False)
+                else:
+                    item.setHidden(True)
 
     def login_to_spotify(self):
         """Handle login button click - authenticate with Spotify."""
@@ -460,6 +697,7 @@ class AlarmApp(QtWidgets.QMainWindow):
             self.spotify_api.authenticate()
             self._update_auth_status()
             self._load_playlists()
+            self._refresh_devices()
             self._update_device_status()
             logger.info('Spotify login successful')
 
@@ -508,6 +746,9 @@ class AlarmApp(QtWidgets.QMainWindow):
                 if image_url:
                     self._load_playlist_image(playlist_id, image_url)
 
+            self.last_sync_time = datetime.now()
+            self.sync_time_label.setText(f'Last sync: {self.last_sync_time.strftime("%H:%M:%S")}')
+
             logger.info(f'Loaded {len(playlists)} playlists into UI')
 
         except RuntimeError as e:
@@ -532,11 +773,27 @@ class AlarmApp(QtWidgets.QMainWindow):
         if widget and not pixmap.isNull():
             widget.set_image(pixmap)
 
+    def play_playlist_now(self, playlist_uri):
+        """Play a playlist immediately (for testing from context menu)."""
+        if not self.spotify_api:
+            QMessageBox.warning(self, 'Error', 'Not authenticated.')
+            return
+
+        try:
+            self.spotify_api.play_playlist_by_uri(playlist_uri)
+            QMessageBox.information(self, 'Playing', 'Playlist playback started.')
+        except Exception as e:
+            QMessageBox.warning(self, 'Error', f'Could not play playlist: {e}')
+
     def open_settings(self):
         """Open the settings dialog for Spotify credentials."""
         logger.info('Opening settings dialog')
-        dlg = SettingsDialog(self)
+        dlg = SettingsDialog(self, self.current_theme)
         if dlg.exec_() == QDialog.Accepted:
+            theme_changed = dlg.theme_changed
+            if theme_changed:
+                self._toggle_theme()
+            
             load_dotenv(override=True)
             try:
                 self.spotify_api = SpotifyAPI()
@@ -562,6 +819,7 @@ class AlarmApp(QtWidgets.QMainWindow):
         logger.info('Opening alarm manager')
         dlg = AlarmManagerDialog(self.alarm, self)
         dlg.exec_()
+        self._update_alarm_preview()
 
     def open_log_viewer(self):
         """Open the log viewer dialog."""
@@ -652,6 +910,8 @@ class AlarmApp(QtWidgets.QMainWindow):
                 f'Could not set alarm: {str(e)}\n\n'
                 'Please check your settings and try again.'
             )
+        
+        self._update_alarm_preview()
 
     def _validate_alarm_time(self, time_str):
         """
@@ -687,6 +947,20 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         return True
 
+    def changeEvent(self, event):
+        """Handle window state changes for minimize to tray."""
+        if event.type() == event.WindowStateChange:
+            if self.isMinimized() and hasattr(self, 'tray_icon'):
+                event.ignore()
+                self.hide()
+                self.tray_icon.showMessage(
+                    'Alarmify',
+                    'Application minimized to tray',
+                    QSystemTrayIcon.Information,
+                    2000
+                )
+        super().changeEvent(event)
+
     def closeEvent(self, event):
         """
         Handle window close event - cleanup resources before exit.
@@ -699,9 +973,19 @@ class AlarmApp(QtWidgets.QMainWindow):
         Args:
             event: QCloseEvent from Qt framework
         """
-        logger.info('Application closing - cleaning up resources')
-        self._cleanup_resources()
-        event.accept()
+        if hasattr(self, 'tray_icon') and self.tray_icon.isVisible():
+            event.ignore()
+            self.hide()
+            self.tray_icon.showMessage(
+                'Alarmify',
+                'Application is still running in the system tray',
+                QSystemTrayIcon.Information,
+                2000
+            )
+        else:
+            logger.info('Application closing - cleaning up resources')
+            self._cleanup_resources()
+            event.accept()
 
     def _cleanup_resources(self):
         """Clean up all background threads and resources."""
@@ -798,61 +1082,72 @@ class SettingsDialog(QDialog):
 
     Allows user to enter Client ID, Client Secret, and Redirect URI.
     Saves credentials to .env file in project directory.
-    Provides help button to guide users through getting credentials.
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, current_theme='dark'):
         """Initialize the settings dialog with current credentials."""
         super().__init__(parent)
-        self.setWindowTitle('Spotify Settings')
-        self.setMinimumWidth(450)
+        self.setWindowTitle('Settings')
+        self.setMinimumWidth(400)
         self.setModal(True)
+        self.theme_changed = False
+        self.initial_theme = current_theme
 
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        instructions = QLabel(
-            "To use Alarmify, you need Spotify API credentials.\n"
-            "Click 'Get Credentials' to create them (takes 2 minutes)."
-        )
-        instructions.setWordWrap(True)
-        instructions.setStyleSheet("color: #b3b3b3; margin-bottom: 10px;")
-        layout.addWidget(instructions)
+        theme_label = QLabel('Theme')
+        theme_label.setFont(QFont('Arial', 12, QFont.Bold))
+        layout.addWidget(theme_label)
 
-        btn_get_creds = QPushButton('Get Credentials (Open Spotify Developer)', self)
-        btn_get_creds.setStyleSheet(
-            "background-color: #1DB954; color: white; padding: 10px; "
-            "font-weight: bold; border-radius: 5px;"
-        )
-        btn_get_creds.clicked.connect(self._open_spotify_dashboard)
-        layout.addWidget(btn_get_creds)
+        theme_row = QHBoxLayout()
+        self.theme_group = QButtonGroup(self)
+        
+        self.dark_radio = QRadioButton('Dark')
+        self.light_radio = QRadioButton('Light')
+        
+        self.theme_group.addButton(self.dark_radio, 0)
+        self.theme_group.addButton(self.light_radio, 1)
+        
+        if current_theme == 'dark':
+            self.dark_radio.setChecked(True)
+        else:
+            self.light_radio.setChecked(True)
+        
+        theme_row.addWidget(self.dark_radio)
+        theme_row.addWidget(self.light_radio)
+        theme_row.addStretch()
+        
+        layout.addLayout(theme_row)
 
-        separator = QLabel("— Then paste your credentials below —")
-        separator.setAlignment(Qt.AlignCenter)
-        separator.setStyleSheet("color: #666; margin: 10px 0;")
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
         layout.addWidget(separator)
 
+        spotify_label = QLabel('Spotify Credentials')
+        spotify_label.setFont(QFont('Arial', 12, QFont.Bold))
+        layout.addWidget(spotify_label)
+
         form_layout = QFormLayout()
-        form_layout.setSpacing(10)
+        form_layout.setSpacing(12)
 
         self.client_id = QLineEdit(self)
-        self.client_id.setPlaceholderText('Paste your Client ID here')
+        self.client_id.setPlaceholderText('Enter your Spotify Client ID')
 
         self.client_secret = QLineEdit(self)
-        self.client_secret.setPlaceholderText('Paste your Client Secret here')
+        self.client_secret.setPlaceholderText('Enter your Spotify Client Secret')
         self.client_secret.setEchoMode(QLineEdit.Password)
 
         self.redirect_uri = QLineEdit(self)
-        self.redirect_uri.setText('http://localhost:8888/callback')
-        self.redirect_uri.setStyleSheet("color: #888;")
+        self.redirect_uri.setPlaceholderText('http://localhost:8888/callback')
 
         load_dotenv()
-        if os.getenv('SPOTIPY_CLIENT_ID'):
-            self.client_id.setText(os.getenv('SPOTIPY_CLIENT_ID', ''))
-        if os.getenv('SPOTIPY_CLIENT_SECRET'):
-            self.client_secret.setText(os.getenv('SPOTIPY_CLIENT_SECRET', ''))
-        if os.getenv('SPOTIPY_REDIRECT_URI'):
-            self.redirect_uri.setText(os.getenv('SPOTIPY_REDIRECT_URI'))
+        self.client_id.setText(os.getenv('SPOTIPY_CLIENT_ID', ''))
+        self.client_secret.setText(os.getenv('SPOTIPY_CLIENT_SECRET', ''))
+        self.redirect_uri.setText(
+            os.getenv('SPOTIPY_REDIRECT_URI', 'http://localhost:8888/callback')
+        )
 
         form_layout.addRow('Client ID:', self.client_id)
         form_layout.addRow('Client Secret:', self.client_secret)
@@ -860,46 +1155,18 @@ class SettingsDialog(QDialog):
 
         layout.addLayout(form_layout)
 
-        uri_note = QLabel(
-            "Note: Add this exact Redirect URI in your Spotify app settings."
-        )
-        uri_note.setStyleSheet("color: #888; font-size: 11px;")
-        layout.addWidget(uri_note)
-
         btn_layout = QHBoxLayout()
 
         btn_cancel = QPushButton('Cancel', self)
         btn_cancel.clicked.connect(self.reject)
         btn_layout.addWidget(btn_cancel)
 
-        btn_save = QPushButton('Save & Connect', self)
+        btn_save = QPushButton('Save', self)
         btn_save.clicked.connect(self.save)
         btn_save.setDefault(True)
-        btn_save.setStyleSheet(
-            "background-color: #1DB954; color: white; padding: 8px 16px;"
-        )
         btn_layout.addWidget(btn_save)
 
         layout.addLayout(btn_layout)
-
-    def _open_spotify_dashboard(self):
-        """Open Spotify Developer Dashboard in browser with instructions."""
-        import webbrowser
-        QMessageBox.information(
-            self,
-            'How to Get Credentials',
-            "1. Log in with your Spotify account\n"
-            "2. Click 'Create app'\n"
-            "3. Enter any name (e.g., 'Alarmify')\n"
-            "4. Enter any description\n"
-            "5. Set Redirect URI to:\n"
-            "   http://localhost:8888/callback\n"
-            "6. Check 'Web API'\n"
-            "7. Click 'Save'\n"
-            "8. Copy Client ID and Client Secret\n"
-            "9. Paste them in this dialog"
-        )
-        webbrowser.open('https://developer.spotify.com/dashboard')
 
     def save(self):
         """Validate and save credentials to .env file."""
@@ -915,17 +1182,7 @@ class SettingsDialog(QDialog):
                 QMessageBox.warning(
                     self,
                     'Validation Error',
-                    'Client ID and Client Secret are required.\n\n'
-                    'Get these from your Spotify Developer Dashboard:\n'
-                    'https://developer.spotify.com/dashboard'
-                )
-                return
-
-            if not ruri:
-                QMessageBox.warning(
-                    self,
-                    'Validation Error',
-                    'Redirect URI is required.\n\nDefault: http://localhost:8888/callback'
+                    'Client ID and Client Secret are required.'
                 )
                 return
 
@@ -933,8 +1190,7 @@ class SettingsDialog(QDialog):
                 QMessageBox.warning(
                     self,
                     'Validation Error',
-                    'Redirect URI must start with http:// or https://\n\n'
-                    'This must match the Redirect URI configured in your Spotify app settings.'
+                    'Redirect URI must start with http:// or https://'
                 )
                 return
 
@@ -944,6 +1200,10 @@ class SettingsDialog(QDialog):
                 f.write(f"SPOTIPY_REDIRECT_URI={ruri}\n")
 
             load_dotenv(override=True)
+
+            selected_theme = 'dark' if self.dark_radio.isChecked() else 'light'
+            if selected_theme != self.initial_theme:
+                self.theme_changed = True
 
             self.accept()
 

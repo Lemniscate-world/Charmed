@@ -622,6 +622,41 @@ class SpotifyAPI:
         except Exception:
             return []
 
+    @thread_safe_api_call
+    def get_devices(self):
+        """
+        Get all available Spotify playback devices.
+
+        Returns:
+            list[dict]: List of device dictionaries with 'id', 'name', 'type', 'is_active', etc.
+                        Returns empty list if not authenticated or error occurs.
+        """
+        if not self.sp:
+            return []
+
+        try:
+            devices = self.sp.devices()
+            return devices.get('devices', [])
+        except Exception:
+            return []
+
+    @thread_safe_api_call
+    def transfer_playback(self, device_id, force_play=False):
+        """
+        Transfer playback to a specific device.
+
+        Args:
+            device_id: Spotify device ID to transfer to.
+            force_play: If True, start playback on the device immediately.
+
+        Raises:
+            RuntimeError: If not authenticated or device not found.
+        """
+        if not self.sp:
+            raise RuntimeError('Spotify client not authenticated')
+
+        self.sp.transfer_playback(device_id, force_play=force_play)
+
     def start_command_queue_worker(self):
         """
         Start the command queue worker thread for processing API commands.

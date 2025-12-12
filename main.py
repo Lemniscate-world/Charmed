@@ -11,6 +11,7 @@ def main():
     
     try:
         app = QtWidgets.QApplication(sys.argv)
+        app.setQuitOnLastWindowClosed(False)
         window = AlarmApp()
         window.show()
         logger.info('Main window displayed')
