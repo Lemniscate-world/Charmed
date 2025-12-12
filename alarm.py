@@ -22,6 +22,60 @@ import schedule  # Job scheduling library
 import time      # Time-related functions (sleep)
 import threading  # Background thread execution
 import re        # Regular expressions for time validation
+import logging   # Structured logging
+from logging.handlers import RotatingFileHandler  # Log rotation
+from pathlib import Path  # Path manipulation
+from datetime import datetime  # Timestamp generation
+
+
+def setup_logging():
+    """
+    Configure logging with rotating file handler.
+    
+    Creates a logs directory in the application folder and sets up
+    a rotating file handler with timestamped log files. Logs are
+    configured with INFO level and include contextual information.
+    """
+    # Create logs directory if it doesn't exist
+    logs_dir = Path(__file__).parent / 'logs'
+    logs_dir.mkdir(exist_ok=True)
+    
+    # Generate timestamped log filename
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = logs_dir / f'alarmify_{timestamp}.log'
+    
+    # Configure rotating file handler (10MB per file, keep 5 backups)
+    file_handler = RotatingFileHandler(
+        log_file,
+        maxBytes=10 * 1024 * 1024,  # 10 MB
+        backupCount=5,
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.DEBUG)
+    
+    # Configure console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    
+    # Create formatter with timestamp, level, module, and message
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+    
+    # Get logger for this module
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    return logger
+
+
+# Initialize logger for this module
+logger = setup_logging()
 
 
 class Alarm:
@@ -58,6 +112,11 @@ class Alarm:
         # Callback for alarm failures
         self.alarm_failure_callback = alarm_failure_callback
 
+        # Thread safety: Lock for protecting alarm list modifications
+        self._alarms_lock = threading.Lock()
+        
+        logger.info("Alarm manager initialized")
+
     def validate_time_format(self, time_str):
         """
         Validate alarm time format.
@@ -78,9 +137,6 @@ class Alarm:
         
         return True, None
 
-        # Thread safety: Lock for protecting alarm list modifications
-        self._alarms_lock = threading.Lock()
-
     def set_alarm(self, time_str, playlist_name, playlist_uri, spotify_api, volume=80):
         """
         Schedule a new alarm.
@@ -98,9 +154,15 @@ class Alarm:
         Raises:
             ValueError: If time format is invalid.
         """
+        logger.info(
+            f"Scheduling alarm - Time: {time_str}, Playlist: {playlist_name}, "
+            f"URI: {playlist_uri}, Volume: {volume}%"
+        )
+        
         # Validate time format
         is_valid, error_msg = self.validate_time_format(time_str)
         if not is_valid:
+            logger.error(f"Invalid time format for alarm: {time_str} - {error_msg}")
             raise ValueError(error_msg)
         
         # Create the scheduled job - runs daily at specified time
@@ -124,6 +186,7 @@ class Alarm:
         
         with self._alarms_lock:
             self.alarms.append(alarm_info)
+            logger.info(f"Alarm successfully scheduled for {time_str}. Total alarms: {len(self.alarms)}")
 
         # Start scheduler thread if not already running
         self._ensure_scheduler_running()
@@ -140,9 +203,11 @@ class Alarm:
             Continuously checks for pending jobs and runs them.
             Sleeps 1 second between checks to avoid CPU spinning.
             """
+            logger.info("Scheduler thread started")
             while self.scheduler_running:
                 schedule.run_pending()  # Execute any due jobs
                 time.sleep(1)           # Wait 1 second
+            logger.info("Scheduler thread stopped")
 
         # Mark scheduler as running
         self.scheduler_running = True
@@ -155,8 +220,9 @@ class Alarm:
             name='AlarmScheduler'
         )
         self.scheduler_thread.start()
+        logger.info("Alarm scheduler background thread initialized")
 
-    def play_playlist(self, playlist_uri, spotify_api, volume=80):
+    def play_playlist(self, playlist_uri, spotify_api, volume=80, time_str=None):
         """
         Play a playlist - called by scheduler when alarm triggers.
 
@@ -166,21 +232,25 @@ class Alarm:
             playlist_uri: Spotify URI of playlist to play.
             spotify_api: SpotifyAPI instance for control.
             volume: Volume level 0-100.
+            time_str: Time string for error reporting (optional).
         """
+        logger.info(f"Alarm triggered - Playing playlist: {playlist_uri} at volume {volume}%")
+        
         try:
             # Set volume before playing
             spotify_api.set_volume(volume)
-        except Exception:
+            logger.info(f"Volume set to {volume}%")
+        except Exception as e:
             # Volume control may fail if no active device
             # Continue anyway - playback might wake the device
-            pass
+            logger.warning(f"Failed to set volume: {e}. Continuing with playback attempt.")
 
         try:
             # Start playlist playback by URI
             spotify_api.play_playlist_by_uri(playlist_uri)
+            logger.info(f"Successfully started playlist playback: {playlist_uri}")
         except Exception as e:
-            # Log error (could add proper logging later)
-            print(f"Alarm playback failed: {e}")
+            logger.error(f"Alarm playback failed for playlist {playlist_uri}: {e}", exc_info=True)
 
     def get_alarms(self):
         """
@@ -195,7 +265,7 @@ class Alarm:
         """
         # Return copy without 'job' key (internal implementation detail, thread-safe)
         with self._alarms_lock:
-            return [
+            alarm_list = [
                 {
                     'time': a['time'],
                     'playlist': a['playlist'],
@@ -204,6 +274,8 @@ class Alarm:
                 }
                 for a in self.alarms
             ]
+            logger.debug(f"Retrieved {len(alarm_list)} alarms")
+            return alarm_list
 
     def remove_alarm(self, time_str):
         """
@@ -214,6 +286,7 @@ class Alarm:
         Args:
             time_str: Time of alarm to remove (HH:MM format).
         """
+        logger.info(f"Removing alarm scheduled for {time_str}")
         # Find and remove matching alarms (thread-safe)
         with self._alarms_lock:
             for alarm in self.alarms[:]:  # Iterate copy to allow removal
@@ -222,14 +295,23 @@ class Alarm:
                     schedule.cancel_job(alarm['job'])
                     # Remove from our list
                     self.alarms.remove(alarm)
+                    logger.info(
+                        f"Alarm removed - Time: {time_str}, Playlist: {alarm['playlist']}. "
+                        f"Remaining alarms: {len(self.alarms)}"
+                    )
                     break  # Remove first match only
+            else:
+                logger.warning(f"Attempted to remove non-existent alarm at {time_str}")
 
     def clear_all_alarms(self):
         """Remove all scheduled alarms."""
+        logger.info("Clearing all alarms")
         with self._alarms_lock:
+            alarm_count = len(self.alarms)
             for alarm in self.alarms:
                 schedule.cancel_job(alarm['job'])
             self.alarms.clear()
+            logger.info(f"All alarms cleared. Removed {alarm_count} alarm(s)")
 
     def shutdown(self):
         """
@@ -238,13 +320,20 @@ class Alarm:
         Stops the scheduler thread, cancels all scheduled jobs,
         and cleans up resources. Should be called before application exit.
         """
+        logger.info("Initiating alarm scheduler shutdown")
         if self.scheduler_running:
             self.scheduler_running = False
             
             if self.scheduler_thread and self.scheduler_thread.is_alive():
                 self.scheduler_thread.join(timeout=2.0)
+                if self.scheduler_thread.is_alive():
+                    logger.warning("Scheduler thread did not stop within timeout period")
+                else:
+                    logger.info("Scheduler thread stopped successfully")
         
         with self._alarms_lock:
+            alarm_count = len(self.alarms)
             for alarm in self.alarms:
                 schedule.cancel_job(alarm['job'])
             self.alarms.clear()
+            logger.info(f"Alarm scheduler shutdown complete. Cleaned up {alarm_count} alarm(s)")
