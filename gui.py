@@ -1105,6 +1105,7 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
+<<<<<<< Updated upstream
         theme_label = QLabel('Theme')
         theme_label.setFont(QFont('Arial', 12, QFont.Bold))
         layout.addWidget(theme_label)
@@ -1137,6 +1138,8 @@ class SettingsDialog(QDialog):
 
 
         form_layout = QFormLayout()
+=======
+>>>>>>> Stashed changes
         # Instructions label at the top
         instructions = QLabel(
             "To use Alarmify, you need Spotify API credentials.\n"
@@ -1196,8 +1199,11 @@ class SettingsDialog(QDialog):
 
         layout.addLayout(form_layout)
 
+<<<<<<< Updated upstream
         layout.addLayout(form_layout)
 
+=======
+>>>>>>> Stashed changes
         # Help note about redirect URI
         uri_note = QLabel(
             "Note: Add this exact Redirect URI in your Spotify app settings."
