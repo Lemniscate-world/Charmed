@@ -13,6 +13,7 @@ Thank you for your interest in contributing to Alarmify! This document provides 
 - [Pull Request Process](#pull-request-process)
 - [Issue Guidelines](#issue-guidelines)
 - [Documentation](#documentation)
+- [Build System](#build-system)
 
 ## Code of Conduct
 
@@ -680,6 +681,111 @@ Reference in markdown:
 ```markdown
 ![Feature Description](docs/screenshots/feature-xyz.png)
 ```
+
+## Build System
+
+### Architecture
+
+The build system consists of:
+
+1. **alarmify.spec** - PyInstaller configuration
+2. **installer.iss** - Inno Setup script
+3. **build_installer.py** - Build orchestration
+4. **version_manager.py** - Version management
+5. **.github/workflows/build.yml** - CI/CD pipeline
+
+### Building
+
+#### Build Executable Only
+
+```powershell
+# Quick build (executable only)
+python build_installer.py --skip-inno
+
+# Output: dist/Alarmify.exe
+```
+
+#### Build Full Installer
+
+Requires [Inno Setup 6](https://jrsoftware.org/isdl.php):
+
+```powershell
+# Full build with installer
+python build_installer.py
+
+# Outputs:
+# - dist/Alarmify.exe
+# - Output/AlarmifySetup-1.0.0.exe
+```
+
+#### Build Options
+
+```powershell
+# Skip tests (faster)
+python build_installer.py --skip-tests
+
+# Skip Inno Setup (executable only)
+python build_installer.py --skip-inno
+
+# Both options
+python build_installer.py --skip-tests --skip-inno
+```
+
+### Modifying Build
+
+#### Add Data Files
+
+Edit `alarmify.spec`:
+```python
+datas=[
+    ('spotify_style.qss', '.'),
+    ('new_file.txt', '.'),  # Add here
+],
+```
+
+#### Add Dependencies
+
+Edit `alarmify.spec`:
+```python
+hiddenimports=[
+    'PyQt5.sip',
+    'new_package',  # Add here
+],
+```
+
+#### Change Installer Options
+
+Edit `installer.iss`:
+- App information: `[Setup]` section
+- Files to install: `[Files]` section
+- Shortcuts: `[Icons]` section
+- Registry keys: `[Registry]` section
+
+#### Modify Build Process
+
+Edit `build_installer.py`:
+- Add new build stages
+- Add custom verification
+- Integrate additional tools
+
+### CI/CD Pipeline
+
+The GitHub Actions workflow (`.github/workflows/build.yml`):
+
+**Runs on:**
+- Push to main/develop
+- Pull requests
+- Version tags (v*.*.*)
+
+**Jobs:**
+1. **build** - Build executable and installer
+2. **smoke-test** - Verify build quality
+3. **release** - Create GitHub release (tags only)
+
+**Testing your changes:**
+1. Push to your fork
+2. Check Actions tab
+3. Verify build succeeds
 
 ## Development Tips
 

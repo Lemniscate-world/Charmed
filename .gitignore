@@ -39,3 +39,17 @@ logs/
 *.log
 logs/
 
+# Build outputs (Inno Setup)
+Output/
+
+# Version info
+version_info.txt
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+*.cover
+
+# GitHub Actions
+.github/actions-cache/
