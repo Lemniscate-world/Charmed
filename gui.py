@@ -53,8 +53,9 @@ from dotenv import load_dotenv
 from datetime import datetime
 import re
 
-from spotify_api.spotify_api import SpotifyAPI
-from alarm import Alarm
+# Local module imports
+from spotify_api.spotify_api import ThreadSafeSpotifyAPI  # Thread-safe Spotify API wrapper
+from alarm import Alarm  # Alarm scheduling
 from logging_config import get_logger, get_log_files, read_log_file, get_current_log_file
 
 logger = get_logger(__name__)
@@ -252,7 +253,7 @@ class AlarmApp(QtWidgets.QMainWindow):
         self._apply_theme()
 
         try:
-            self.spotify_api = SpotifyAPI()
+            self.spotify_api = ThreadSafeSpotifyAPI()
         except RuntimeError as e:
             logger.warning('Spotify credentials not configured')
             QMessageBox.warning(
@@ -794,9 +795,10 @@ class AlarmApp(QtWidgets.QMainWindow):
             if theme_changed:
                 self._toggle_theme()
             
+            # Reload environment and recreate ThreadSafeSpotifyAPI
             load_dotenv(override=True)
             try:
-                self.spotify_api = SpotifyAPI()
+                self.spotify_api = ThreadSafeSpotifyAPI()
                 self.login_button.setEnabled(True)
                 self.set_alarm_button.setEnabled(True)
                 self._update_auth_status()

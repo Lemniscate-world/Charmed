@@ -1,7 +1,12 @@
 """
 spotify_api.py - Thread-safe Spotify API wrapper for Alarmify
 
-This module provides the SpotifyAPI class that handles:
+This module provides two classes for Spotify API interactions:
+
+1. SpotifyAPI - Base API wrapper with built-in thread safety via decorator
+2. ThreadSafeSpotifyAPI - Explicit thread-safe wrapper with RLock protection
+
+Both classes handle:
 - OAuth authentication with Spotify
 - Fetching user playlists (with metadata like images, track counts)
 - Starting playback on user's active device
@@ -9,14 +14,15 @@ This module provides the SpotifyAPI class that handles:
 - Thread-safe API access with locks and command queue pattern
 
 Thread Safety Implementation:
-- All public API methods are protected with a reentrant lock (RLock)
-- The @thread_safe_api_call decorator ensures synchronized access
-- Optional command queue pattern for serializing requests across threads
-- Prevents race conditions between GUI and alarm scheduler threads
+- SpotifyAPI: All public API methods protected with @thread_safe_api_call decorator
+- ThreadSafeSpotifyAPI: Wraps SpotifyAPI with explicit RLock on all methods
+- Both approaches prevent race conditions between GUI and alarm scheduler threads
+- ThreadSafeSpotifyAPI recommended for multi-threaded applications
 
 Dependencies:
 - spotipy: Spotify Web API wrapper
 - python-dotenv: Environment variable management
+- threading: Thread synchronization primitives
 """
 
 import os  # Operating system interface for environment variables
@@ -735,3 +741,178 @@ class SpotifyAPI:
             **kwargs: Keyword arguments for the function
         """
         self._command_queue.put((func, args, kwargs, None))
+
+
+class ThreadSafeSpotifyAPI:
+    """
+    Thread-safe wrapper for SpotifyAPI ensuring synchronized access from multiple threads.
+    
+    This class wraps all SpotifyAPI methods with a reentrant lock (RLock) to prevent
+    race conditions when the API is accessed from both the GUI thread and the alarm
+    scheduler thread. The RLock ensures that API calls are serialized even if the
+    same thread makes nested calls.
+    
+    Usage:
+        spotify = ThreadSafeSpotifyAPI()
+        spotify.authenticate()
+        playlists = spotify.get_playlists()
+        spotify.play_playlist_by_uri(playlist_uri)
+    
+    All methods are protected by the same lock, ensuring thread-safe access to
+    the underlying Spotify API client.
+    """
+    
+    def __init__(self):
+        """
+        Initialize the thread-safe Spotify API wrapper.
+        
+        Creates an underlying SpotifyAPI instance and a reentrant lock for
+        protecting all API access.
+        """
+        self._api = SpotifyAPI()
+        self._lock = threading.RLock()
+    
+    def authenticate(self, open_browser=True, timeout=120):
+        """
+        Thread-safe OAuth authentication with Spotify.
+        
+        Args:
+            open_browser: If True, automatically open the auth URL in browser.
+            timeout: Seconds to wait for OAuth callback before giving up.
+            
+        Returns:
+            dict: Token info containing access_token, refresh_token, etc.
+            
+        Raises:
+            RuntimeError: If OAuth callback fails or times out.
+        """
+        with self._lock:
+            return self._api.authenticate(open_browser, timeout)
+    
+    def is_authenticated(self):
+        """
+        Thread-safe check if user is currently authenticated.
+        
+        Returns:
+            bool: True if authenticated with valid token, False otherwise.
+        """
+        with self._lock:
+            return self._api.is_authenticated()
+    
+    def get_current_user(self):
+        """
+        Thread-safe retrieval of current authenticated user's profile.
+        
+        Returns:
+            dict: User profile with 'display_name', 'id', 'images', etc.
+                  Returns None if not authenticated.
+        """
+        with self._lock:
+            return self._api.get_current_user()
+    
+    def get_playlists(self):
+        """
+        Thread-safe retrieval of user's playlists with basic info.
+        
+        Returns:
+            list[str]: List of playlist names.
+            
+        Raises:
+            RuntimeError: If not authenticated.
+        """
+        with self._lock:
+            return self._api.get_playlists()
+    
+    def get_playlists_detailed(self):
+        """
+        Thread-safe retrieval of user's playlists with full metadata.
+        
+        Returns detailed info including images, track counts, and URIs
+        for enhanced UI display. Handles pagination automatically.
+        
+        Returns:
+            list[dict]: List of playlist dictionaries with keys:
+                - name: Playlist name
+                - id: Spotify playlist ID
+                - uri: Spotify URI for playback
+                - track_count: Number of tracks
+                - image_url: URL of playlist cover image (or None)
+                - owner: Playlist owner's display name
+                
+        Raises:
+            RuntimeError: If not authenticated.
+        """
+        with self._lock:
+            return self._api.get_playlists_detailed()
+    
+    def play_playlist(self, playlist_name):
+        """
+        Thread-safe playback of a playlist by name.
+        
+        Args:
+            playlist_name: Name of playlist to play.
+            
+        Raises:
+            RuntimeError: If not authenticated or no active device.
+        """
+        with self._lock:
+            return self._api.play_playlist(playlist_name)
+    
+    def play_playlist_by_uri(self, playlist_uri):
+        """
+        Thread-safe playback of a playlist by Spotify URI.
+        
+        Args:
+            playlist_uri: Spotify URI (e.g., 'spotify:playlist:xxxxx')
+            
+        Raises:
+            RuntimeError: If not authenticated or no active device.
+        """
+        with self._lock:
+            return self._api.play_playlist_by_uri(playlist_uri)
+    
+    def set_volume(self, volume_percent):
+        """
+        Thread-safe volume control on active device.
+        
+        Args:
+            volume_percent: Volume level from 0 to 100.
+            
+        Raises:
+            RuntimeError: If not authenticated or no active device.
+        """
+        with self._lock:
+            return self._api.set_volume(volume_percent)
+    
+    def get_active_device(self):
+        """
+        Thread-safe retrieval of currently active Spotify playback device.
+        
+        Returns:
+            dict: Device info with 'name', 'type', 'volume_percent', etc.
+                  Returns None if no active device.
+        """
+        with self._lock:
+            return self._api.get_active_device()
+    
+    @property
+    def sp(self):
+        """
+        Thread-safe access to the underlying Spotify client.
+        
+        Returns:
+            Spotify client instance or None if not authenticated.
+        """
+        with self._lock:
+            return self._api.sp
+    
+    @property
+    def auth_manager(self):
+        """
+        Thread-safe access to the OAuth manager.
+        
+        Returns:
+            SpotifyOAuth instance for authentication management.
+        """
+        with self._lock:
+            return self._api.auth_manager

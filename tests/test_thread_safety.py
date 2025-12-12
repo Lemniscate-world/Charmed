@@ -10,7 +10,7 @@ import time
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 from alarm import Alarm
-from spotify_api.spotify_api import SpotifyAPI
+from spotify_api.spotify_api import SpotifyAPI, ThreadSafeSpotifyAPI
 
 
 class TestAlarmThreadSafety:
@@ -179,6 +179,130 @@ class TestSpotifyAPIThreadSafety:
         assert mock_sp.start_playback.call_count == 5
 
 
+class TestThreadSafeSpotifyAPIWrapper:
+    """Test ThreadSafeSpotifyAPI wrapper class."""
+    
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    def test_wrapper_protects_concurrent_calls(self, mock_oauth, mock_spotify_class):
+        """Test that ThreadSafeSpotifyAPI properly wraps and protects calls."""
+        mock_sp = MagicMock()
+        mock_spotify_class.return_value = mock_sp
+        mock_sp.current_user.return_value = {'display_name': 'Test User'}
+        
+        with patch.dict('os.environ', {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888'
+        }):
+            api = ThreadSafeSpotifyAPI()
+            api._api.sp = mock_sp
+        
+        results = []
+        
+        def call_api():
+            for _ in range(10):
+                user = api.get_current_user()
+                results.append(user)
+        
+        threads = []
+        for _ in range(5):
+            t = threading.Thread(target=call_api)
+            threads.append(t)
+            t.start()
+        
+        for t in threads:
+            t.join()
+        
+        assert len(results) == 50
+        assert all(r['display_name'] == 'Test User' for r in results)
+    
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    def test_wrapper_concurrent_playback(self, mock_oauth, mock_spotify_class):
+        """Test concurrent playback calls through wrapper are properly synchronized."""
+        mock_sp = MagicMock()
+        mock_spotify_class.return_value = mock_sp
+        
+        with patch.dict('os.environ', {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888'
+        }):
+            api = ThreadSafeSpotifyAPI()
+            api._api.sp = mock_sp
+        
+        mock_sp.current_user_playlists.return_value = {
+            'items': [
+                {'name': 'Test', 'uri': 'spotify:playlist:1'}
+            ]
+        }
+        
+        def play_with_volume():
+            api.set_volume(75)
+            api.play_playlist_by_uri('spotify:playlist:1')
+        
+        threads = []
+        for _ in range(10):
+            t = threading.Thread(target=play_with_volume)
+            threads.append(t)
+            t.start()
+        
+        for t in threads:
+            t.join()
+        
+        assert mock_sp.volume.call_count == 10
+        assert mock_sp.start_playback.call_count == 10
+    
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    def test_wrapper_get_playlists_detailed(self, mock_oauth, mock_spotify_class):
+        """Test get_playlists_detailed through wrapper is thread-safe."""
+        mock_sp = MagicMock()
+        mock_spotify_class.return_value = mock_sp
+        
+        with patch.dict('os.environ', {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888'
+        }):
+            api = ThreadSafeSpotifyAPI()
+            api._api.sp = mock_sp
+        
+        mock_sp.current_user_playlists.return_value = {
+            'items': [
+                {
+                    'name': 'Playlist 1',
+                    'id': '1',
+                    'uri': 'spotify:playlist:1',
+                    'tracks': {'total': 50},
+                    'images': [{'url': 'http://example.com/img.jpg'}],
+                    'owner': {'display_name': 'Owner'}
+                }
+            ],
+            'next': None
+        }
+        
+        results = []
+        
+        def get_playlists():
+            for _ in range(5):
+                playlists = api.get_playlists_detailed()
+                results.append(len(playlists))
+        
+        threads = []
+        for _ in range(3):
+            t = threading.Thread(target=get_playlists)
+            threads.append(t)
+            t.start()
+        
+        for t in threads:
+            t.join()
+        
+        assert len(results) == 15
+        assert all(count == 1 for count in results)
+
+
 class TestIntegratedThreadSafety:
     """Test integrated scenarios with both Alarm and SpotifyAPI."""
     
@@ -236,6 +360,69 @@ class TestIntegratedThreadSafety:
         assert len(gui_results) == 20
         assert all(count == 2 for count in gui_results)
         assert len(alarm_triggered) == 1
+        assert mock_sp.start_playback.call_count == 1
+    
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    def test_alarm_trigger_with_threadsafe_wrapper(self, mock_oauth, mock_spotify_class):
+        """Simulate alarm triggering with ThreadSafeSpotifyAPI while GUI browses."""
+        mock_sp = MagicMock()
+        mock_spotify_class.return_value = mock_sp
+        
+        with patch.dict('os.environ', {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888'
+        }):
+            api = ThreadSafeSpotifyAPI()
+            api._api.sp = mock_sp
+        
+        alarm = Alarm()
+        
+        mock_sp.current_user_playlists.return_value = {
+            'items': [
+                {
+                    'name': 'Wake Up',
+                    'uri': 'spotify:playlist:wake',
+                    'id': 'wake',
+                    'tracks': {'total': 30},
+                    'images': [],
+                    'owner': {'display_name': 'User'}
+                }
+            ],
+            'next': None
+        }
+        
+        gui_results = []
+        alarm_triggered = []
+        
+        def gui_browsing():
+            """Simulate GUI browsing playlists repeatedly."""
+            for _ in range(15):
+                playlists = api.get_playlists_detailed()
+                gui_results.append(len(playlists))
+                time.sleep(0.002)
+        
+        def alarm_triggering():
+            """Simulate alarm triggering playback."""
+            time.sleep(0.01)
+            api.set_volume(80)
+            api.play_playlist_by_uri('spotify:playlist:wake')
+            alarm_triggered.append(True)
+        
+        gui_thread = threading.Thread(target=gui_browsing)
+        alarm_thread = threading.Thread(target=alarm_triggering)
+        
+        gui_thread.start()
+        alarm_thread.start()
+        
+        gui_thread.join()
+        alarm_thread.join()
+        
+        assert len(gui_results) == 15
+        assert all(count == 1 for count in gui_results)
+        assert len(alarm_triggered) == 1
+        assert mock_sp.volume.call_count == 1
         assert mock_sp.start_playback.call_count == 1
 
 
