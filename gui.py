@@ -512,10 +512,15 @@ class AlarmApp(QtWidgets.QMainWindow):
         # Get playlist data from item
         playlist_data = current.data(Qt.UserRole)
         if not playlist_data:
-            # Fallback for old-style items (text only)
-            playlist_name = current.text() if hasattr(current, 'text') else 'Unknown'
-        else:
-            playlist_name = playlist_data.get('name', 'Unknown')
+            QMessageBox.warning(self, 'Error', 'Could not retrieve playlist information.')
+            return
+
+        playlist_name = playlist_data.get('name', 'Unknown')
+        playlist_uri = playlist_data.get('uri')
+        
+        if not playlist_uri:
+            QMessageBox.warning(self, 'Error', 'Playlist URI is missing.')
+            return
 
         if not self.spotify_api:
             QMessageBox.warning(self, 'Missing', 'Spotify credentials are not configured.')
@@ -524,8 +529,8 @@ class AlarmApp(QtWidgets.QMainWindow):
         # Get volume setting
         volume = self.volume_slider.value()
 
-        # Set the alarm
-        self.alarm.set_alarm(time_str, playlist_name, self.spotify_api, volume)
+        # Set the alarm with both name and URI
+        self.alarm.set_alarm(time_str, playlist_name, playlist_uri, self.spotify_api, volume)
 
         QMessageBox.information(
             self,

@@ -37,7 +37,7 @@ class Alarm:
     def __init__(self):
         """Initialize the alarm manager with empty alarm list."""
         # List to store alarm metadata for UI display
-        # Each entry: {'time': 'HH:MM', 'playlist': 'name', 'volume': 80, 'job': schedule.Job}
+        # Each entry: {'time': 'HH:MM', 'playlist': 'name', 'playlist_uri': 'uri', 'volume': 80, 'job': schedule.Job}
         self.alarms = []
 
         # Flag to track if scheduler thread is running
@@ -46,7 +46,7 @@ class Alarm:
         # Reference to scheduler thread
         self.scheduler_thread = None
 
-    def set_alarm(self, time_str, playlist, spotify_api, volume=80):
+    def set_alarm(self, time_str, playlist_name, playlist_uri, spotify_api, volume=80):
         """
         Schedule a new alarm.
 
@@ -55,15 +55,16 @@ class Alarm:
 
         Args:
             time_str: Time in 'HH:MM' format (24-hour).
-            playlist: Name of the Spotify playlist to play.
+            playlist_name: Name of the Spotify playlist (for display).
+            playlist_uri: Spotify URI of the playlist to play.
             spotify_api: SpotifyAPI instance for playback control.
             volume: Volume level 0-100 (default 80).
         """
         # Create the scheduled job - runs daily at specified time
-        # The job calls play_playlist with playlist name, API, and volume
+        # The job calls play_playlist with playlist URI, API, and volume
         job = schedule.every().day.at(time_str).do(
             self.play_playlist,      # Function to call
-            playlist,                # Playlist name argument
+            playlist_uri,            # Playlist URI argument
             spotify_api,             # API instance argument
             volume                   # Volume argument
         )
@@ -71,7 +72,8 @@ class Alarm:
         # Store alarm info for management UI
         alarm_info = {
             'time': time_str,        # Alarm time
-            'playlist': playlist,    # Playlist name
+            'playlist': playlist_name,  # Playlist name for display
+            'playlist_uri': playlist_uri,  # Playlist URI for playback
             'volume': volume,        # Volume setting
             'job': job               # Reference to schedule.Job for removal
         }
@@ -108,14 +110,14 @@ class Alarm:
         )
         self.scheduler_thread.start()
 
-    def play_playlist(self, playlist, spotify_api, volume=80):
+    def play_playlist(self, playlist_uri, spotify_api, volume=80):
         """
         Play a playlist - called by scheduler when alarm triggers.
 
         Sets the volume first, then starts playlist playback.
 
         Args:
-            playlist: Name of playlist to play.
+            playlist_uri: Spotify URI of playlist to play.
             spotify_api: SpotifyAPI instance for control.
             volume: Volume level 0-100.
         """
@@ -128,8 +130,8 @@ class Alarm:
             pass
 
         try:
-            # Start playlist playback
-            spotify_api.play_playlist(playlist)
+            # Start playlist playback by URI
+            spotify_api.play_playlist_by_uri(playlist_uri)
         except Exception as e:
             # Log error (could add proper logging later)
             print(f"Alarm playback failed: {e}")
@@ -142,6 +144,7 @@ class Alarm:
             list[dict]: List of alarm info dictionaries with keys:
                 - time: Alarm time (HH:MM)
                 - playlist: Playlist name
+                - playlist_uri: Playlist URI
                 - volume: Volume percentage
         """
         # Return copy without 'job' key (internal implementation detail)
@@ -149,6 +152,7 @@ class Alarm:
             {
                 'time': a['time'],
                 'playlist': a['playlist'],
+                'playlist_uri': a['playlist_uri'],
                 'volume': a['volume']
             }
             for a in self.alarms

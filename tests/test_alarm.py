@@ -49,12 +49,13 @@ class TestSetAlarm:
         mock_api = Mock()  # Mock SpotifyAPI
         
         # Set an alarm
-        alarm.set_alarm('08:00', 'Morning Playlist', mock_api, 75)
+        alarm.set_alarm('08:00', 'Morning Playlist', 'spotify:playlist:abc123', mock_api, 75)
         
         # Verify alarm was added
         assert len(alarm.alarms) == 1
         assert alarm.alarms[0]['time'] == '08:00'
         assert alarm.alarms[0]['playlist'] == 'Morning Playlist'
+        assert alarm.alarms[0]['playlist_uri'] == 'spotify:playlist:abc123'
         assert alarm.alarms[0]['volume'] == 75
     
     def test_set_alarm_default_volume(self):
@@ -63,7 +64,7 @@ class TestSetAlarm:
         mock_api = Mock()
         
         # Set alarm without volume parameter
-        alarm.set_alarm('09:00', 'Test Playlist', mock_api)
+        alarm.set_alarm('09:00', 'Test Playlist', 'spotify:playlist:xyz789', mock_api)
         
         # Verify default volume
         assert alarm.alarms[0]['volume'] == 80
@@ -73,7 +74,7 @@ class TestSetAlarm:
         alarm = Alarm()
         mock_api = Mock()
         
-        alarm.set_alarm('10:00', 'Test', mock_api)
+        alarm.set_alarm('10:00', 'Test', 'spotify:playlist:test123', mock_api)
         
         # Verify scheduler is now running
         assert alarm.scheduler_running is True
@@ -85,9 +86,9 @@ class TestSetAlarm:
         alarm = Alarm()
         mock_api = Mock()
         
-        alarm.set_alarm('06:00', 'Playlist A', mock_api, 50)
-        alarm.set_alarm('07:00', 'Playlist B', mock_api, 60)
-        alarm.set_alarm('08:00', 'Playlist C', mock_api, 70)
+        alarm.set_alarm('06:00', 'Playlist A', 'spotify:playlist:aaa111', mock_api, 50)
+        alarm.set_alarm('07:00', 'Playlist B', 'spotify:playlist:bbb222', mock_api, 60)
+        alarm.set_alarm('08:00', 'Playlist C', 'spotify:playlist:ccc333', mock_api, 70)
         
         # Verify all alarms were added
         assert len(alarm.alarms) == 3
@@ -107,13 +108,14 @@ class TestGetAlarms:
         alarm = Alarm()
         mock_api = Mock()
         
-        alarm.set_alarm('11:00', 'Test', mock_api, 85)
+        alarm.set_alarm('11:00', 'Test', 'spotify:playlist:test456', mock_api, 85)
         result = alarm.get_alarms()
         
-        # Should have time, playlist, volume but NOT job
+        # Should have time, playlist, playlist_uri, volume but NOT job
         assert len(result) == 1
         assert 'time' in result[0]
         assert 'playlist' in result[0]
+        assert 'playlist_uri' in result[0]
         assert 'volume' in result[0]
         assert 'job' not in result[0]
 
@@ -126,8 +128,8 @@ class TestRemoveAlarm:
         alarm = Alarm()
         mock_api = Mock()
         
-        alarm.set_alarm('12:00', 'Playlist 1', mock_api)
-        alarm.set_alarm('13:00', 'Playlist 2', mock_api)
+        alarm.set_alarm('12:00', 'Playlist 1', 'spotify:playlist:p1', mock_api)
+        alarm.set_alarm('13:00', 'Playlist 2', 'spotify:playlist:p2', mock_api)
         
         # Remove first alarm
         alarm.remove_alarm('12:00')
@@ -151,9 +153,9 @@ class TestClearAllAlarms:
         alarm = Alarm()
         mock_api = Mock()
         
-        alarm.set_alarm('14:00', 'A', mock_api)
-        alarm.set_alarm('15:00', 'B', mock_api)
-        alarm.set_alarm('16:00', 'C', mock_api)
+        alarm.set_alarm('14:00', 'A', 'spotify:playlist:a', mock_api)
+        alarm.set_alarm('15:00', 'B', 'spotify:playlist:b', mock_api)
+        alarm.set_alarm('16:00', 'C', 'spotify:playlist:c', mock_api)
         
         alarm.clear_all_alarms()
         
@@ -168,18 +170,18 @@ class TestPlayPlaylist:
         alarm = Alarm()
         mock_api = Mock()
         
-        alarm.play_playlist('Test Playlist', mock_api, 65)
+        alarm.play_playlist('spotify:playlist:test123', mock_api, 65)
         
         mock_api.set_volume.assert_called_once_with(65)
     
     def test_play_playlist_calls_api(self):
-        """play_playlist should call play_playlist on the API."""
+        """play_playlist should call play_playlist_by_uri on the API."""
         alarm = Alarm()
         mock_api = Mock()
         
-        alarm.play_playlist('My Playlist', mock_api, 80)
+        alarm.play_playlist('spotify:playlist:my123', mock_api, 80)
         
-        mock_api.play_playlist.assert_called_once_with('My Playlist')
+        mock_api.play_playlist_by_uri.assert_called_once_with('spotify:playlist:my123')
     
     def test_play_playlist_handles_volume_error(self):
         """play_playlist should continue if set_volume fails."""
@@ -188,8 +190,8 @@ class TestPlayPlaylist:
         mock_api.set_volume.side_effect = Exception("No active device")
         
         # Should not raise exception
-        alarm.play_playlist('Test', mock_api, 80)
+        alarm.play_playlist('spotify:playlist:test456', mock_api, 80)
         
-        # play_playlist should still be called
-        mock_api.play_playlist.assert_called_once()
+        # play_playlist_by_uri should still be called
+        mock_api.play_playlist_by_uri.assert_called_once()
 
