@@ -1,11 +1,18 @@
 """
-spotify_api.py - Spotify API wrapper for Alarmify
+spotify_api.py - Thread-safe Spotify API wrapper for Alarmify
 
 This module provides the SpotifyAPI class that handles:
 - OAuth authentication with Spotify
 - Fetching user playlists (with metadata like images, track counts)
 - Starting playback on user's active device
 - Volume control for alarm functionality
+- Thread-safe API access with locks and command queue pattern
+
+Thread Safety Implementation:
+- All public API methods are protected with a reentrant lock (RLock)
+- The @thread_safe_api_call decorator ensures synchronized access
+- Optional command queue pattern for serializing requests across threads
+- Prevents race conditions between GUI and alarm scheduler threads
 
 Dependencies:
 - spotipy: Spotify Web API wrapper
@@ -19,9 +26,25 @@ from http.server import HTTPServer, BaseHTTPRequestHandler  # Local OAuth callba
 from dotenv import load_dotenv  # Load .env file into environment
 import spotipy  # Spotify Web API wrapper
 from spotipy.oauth2 import SpotifyOAuth  # OAuth2 authentication handler
+import threading  # Thread synchronization
+import queue  # Thread-safe queue for command pattern
+from functools import wraps  # Decorator utilities
 
 # Load environment variables from .env file at module import time
 load_dotenv()
+
+
+def thread_safe_api_call(func):
+    """
+    Decorator to ensure thread-safe access to Spotify API methods.
+    
+    Acquires the instance's lock before executing the method and releases it after.
+    """
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        with self._api_lock:
+            return func(self, *args, **kwargs)
+    return wrapper
 
 
 class SpotifyAPI:
@@ -31,6 +54,9 @@ class SpotifyAPI:
     Handles OAuth authentication flow, playlist retrieval, and playback control.
     Requires SPOTIPY_CLIENT_ID, SPOTIPY_CLIENT_SECRET, and SPOTIPY_REDIRECT_URI
     to be set in environment variables or .env file.
+    
+    Thread-safe: All API methods are protected by locks to prevent race conditions
+    between GUI and alarm scheduler threads.
     """
 
     def __init__(self):
@@ -74,6 +100,14 @@ class SpotifyAPI:
 
         # Spotify client instance - None until authenticated
         self.sp = None
+
+        # Thread safety: RLock for protecting API access (reentrant to allow nested calls)
+        self._api_lock = threading.RLock()
+
+        # Command queue for coordinating API calls across threads
+        self._command_queue = queue.Queue()
+        self._queue_worker = None
+        self._queue_worker_running = False
 
         # Try to use cached token if available
         # Using validate_token with cache_handler to avoid deprecation warning
@@ -176,6 +210,7 @@ class SpotifyAPI:
 
         return token_info
 
+    @thread_safe_api_call
     def is_authenticated(self):
         """
         Check if user is currently authenticated.
@@ -192,6 +227,7 @@ class SpotifyAPI:
         except Exception:
             return False
 
+    @thread_safe_api_call
     def get_current_user(self):
         """
         Get current authenticated user's profile.
@@ -207,6 +243,7 @@ class SpotifyAPI:
         except Exception:
             return None
 
+    @thread_safe_api_call
     def get_playlists(self):
         """
         Get list of user's playlists with basic info (names only).
@@ -225,6 +262,7 @@ class SpotifyAPI:
         playlists = [item['name'] for item in results.get('items', [])]
         return playlists
 
+    @thread_safe_api_call
     def get_playlists_detailed(self):
         """
         Get list of user's playlists with full metadata.
@@ -276,6 +314,7 @@ class SpotifyAPI:
 
         return playlists
 
+    @thread_safe_api_call
     def play_playlist(self, playlist_name):
         """
         Start playback of a playlist by name.
@@ -304,6 +343,7 @@ class SpotifyAPI:
         # Playlist not found - could raise exception or log warning
         raise RuntimeError(f'Playlist "{playlist_name}" not found')
 
+    @thread_safe_api_call
     def play_playlist_by_uri(self, playlist_uri):
         """
         Start playback of a playlist by Spotify URI.
@@ -321,6 +361,7 @@ class SpotifyAPI:
 
         self.sp.start_playback(context_uri=playlist_uri)
 
+    @thread_safe_api_call
     def set_volume(self, volume_percent):
         """
         Set playback volume on active device.
@@ -338,6 +379,7 @@ class SpotifyAPI:
         volume = max(0, min(100, int(volume_percent)))
         self.sp.volume(volume)
 
+    @thread_safe_api_call
     def get_active_device(self):
         """
         Get the currently active Spotify playback device.
@@ -357,3 +399,82 @@ class SpotifyAPI:
             return None
         except Exception:
             return None
+
+    def start_command_queue_worker(self):
+        """
+        Start the command queue worker thread for processing API commands.
+        
+        This provides an alternative pattern for handling concurrent API access
+        where commands are queued and processed sequentially by a worker thread.
+        """
+        if self._queue_worker_running:
+            return
+        
+        self._queue_worker_running = True
+        
+        def worker():
+            while self._queue_worker_running:
+                try:
+                    cmd = self._command_queue.get(timeout=1.0)
+                    if cmd is None:
+                        break
+                    
+                    func, args, kwargs, result_queue = cmd
+                    try:
+                        result = func(*args, **kwargs)
+                        if result_queue:
+                            result_queue.put(('success', result))
+                    except Exception as e:
+                        if result_queue:
+                            result_queue.put(('error', e))
+                    finally:
+                        self._command_queue.task_done()
+                        
+                except queue.Empty:
+                    continue
+        
+        self._queue_worker = threading.Thread(
+            target=worker,
+            daemon=True,
+            name='SpotifyAPICommandWorker'
+        )
+        self._queue_worker.start()
+    
+    def stop_command_queue_worker(self):
+        """Stop the command queue worker thread."""
+        if not self._queue_worker_running:
+            return
+        
+        self._queue_worker_running = False
+        self._command_queue.put(None)
+        
+        if self._queue_worker:
+            self._queue_worker.join(timeout=5.0)
+            self._queue_worker = None
+    
+    def enqueue_command(self, func, *args, **kwargs):
+        """
+        Enqueue a command for execution by the worker thread.
+        
+        Args:
+            func: The function to call (should be a bound method of this instance)
+            *args: Positional arguments for the function
+            **kwargs: Keyword arguments for the function
+        
+        Returns:
+            Result queue that will contain ('success', result) or ('error', exception)
+        """
+        result_queue = queue.Queue()
+        self._command_queue.put((func, args, kwargs, result_queue))
+        return result_queue
+    
+    def enqueue_command_async(self, func, *args, **kwargs):
+        """
+        Enqueue a command without waiting for result (fire-and-forget).
+        
+        Args:
+            func: The function to call (should be a bound method of this instance)
+            *args: Positional arguments for the function
+            **kwargs: Keyword arguments for the function
+        """
+        self._command_queue.put((func, args, kwargs, None))

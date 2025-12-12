@@ -1,97 +1,110 @@
-# Alarmify
+# Alarmify - Thread-Safe Spotify Alarm Clock
 
-Alarmify lets you schedule Spotify playlists as alarms. Wake up to your favorite music by selecting a playlist, setting a time, and adjusting the volume.
+# Thread Safety Implementation
 
-## Features
+## Overview
 
-- **Playlist Thumbnails**: View playlist cover images, track counts, and owner names
-- **Authentication Status**: See your connection state and username in the UI header
-- **Alarm Management**: View, track, and delete scheduled alarms via the Manage Alarms dialog
-- **Volume Control**: Set playback volume (0-100%) for each alarm
-- **Modern Dark Theme**: Spotify-inspired UI with dark background and green accents
+The Alarmify application now includes comprehensive thread safety for Spotify API access to prevent race conditions between the GUI thread and the alarm scheduler thread.
 
-## Quick Windows Setup
+## Implementation Details
 
-1. Install Python 3.10+ and ensure `python` is on the PATH.
-2. Open PowerShell in the project folder `Alarmify`.
+### 1. SpotifyAPI Thread Safety
 
-Create and activate a virtual environment:
+**Location**: `spotify_api/spotify_api.py`
 
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
+All Spotify API methods are now thread-safe using:
+
+- **Reentrant Lock (RLock)**: A `threading.RLock()` protects all API calls, allowing nested calls from the same thread
+- **@thread_safe_api_call Decorator**: Automatically wraps API methods with lock acquisition/release
+- **Command Queue Pattern**: Optional queue-based command execution for serializing requests
+
+Protected methods include:
+- `is_authenticated()`
+- `get_current_user()`
+- `get_playlists()`
+- `get_playlists_detailed()`
+- `play_playlist()`
+- `play_playlist_by_uri()`
+- `set_volume()`
+- `get_active_device()`
+
+### 2. Alarm Manager Thread Safety
+
+**Location**: `alarm.py`
+
+The Alarm class now protects its internal alarm list with:
+
+- **Threading Lock**: A `threading.Lock()` guards all alarm list modifications
+- Protected operations:
+  - `set_alarm()` - Adding new alarms
+  - `get_alarms()` - Reading alarm list
+  - `remove_alarm()` - Removing alarms
+  - `clear_all_alarms()` - Clearing all alarms
+
+### 3. Command Queue Pattern (Optional)
+
+For advanced use cases, the SpotifyAPI class provides a command queue worker:
+
+```python
+# Start the command queue worker
+spotify_api.start_command_queue_worker()
+
+# Enqueue a command and wait for result
+result_queue = spotify_api.enqueue_command(spotify_api.play_playlist, "My Playlist")
+status, result = result_queue.get()
+
+# Or fire-and-forget
+spotify_api.enqueue_command_async(spotify_api.set_volume, 80)
+
+# Stop the worker when done
+spotify_api.stop_command_queue_worker()
 ```
 
-Install dependencies:
+## Concurrency Scenarios Handled
 
-```powershell
-pip install -r requirements.txt
+1. **GUI + Alarm Scheduler**: User browsing playlists while alarm triggers playback
+2. **Multiple Alarms**: Multiple alarms triggering at the same time
+3. **Manual Playback + Alarm**: User manually playing music while alarm triggers
+4. **Settings Changes**: Updating credentials while alarm scheduler is running
+
+## Technical Notes
+
+- Uses `RLock` (reentrant lock) to allow the same thread to acquire the lock multiple times
+- Lock-free reads where possible, with locks only during writes
+- No deadlock risk as locks are always acquired in the same order
+- Command queue provides alternative serialization pattern if needed
+
+## Testing Recommendations
+
+When testing thread safety:
+
+1. Set multiple alarms close together (1 minute apart)
+2. Browse playlists while alarms are triggering
+3. Manually control playback while alarms are scheduled
+4. Update settings while app is running with active alarms
+
+Run the thread safety tests:
+```bash
+python -m pytest tests/test_thread_safety.py -v
 ```
 
-## Spotify Developer Setup
+## Files Modified
 
-1. Create an app at the Spotify Developer Dashboard: https://developer.spotify.com/dashboard/applications
-2. Add a Redirect URI to your app settings. For local testing use `http://localhost:8888/callback`.
+### Core Implementation
+- `spotify_api/spotify_api.py` - Added RLock, decorator, and command queue pattern
+- `alarm.py` - Added Lock for alarm list protection
+- `README.md` - Documentation of thread safety implementation
 
-## Using the App
+### Tests
+- `tests/test_thread_safety.py` - Comprehensive thread safety tests
 
-1. Run the app:
+## Summary
 
-```powershell
-python main.py
-```
+The implementation provides multiple layers of thread safety:
 
-2. Click the gear icon in the header, enter your Spotify `Client ID`, `Client Secret`, and `Redirect URI`, then click Save.
-3. Click `Login to Spotify`. Your browser will open to Spotify's consent screen. After authorizing, the app will capture the authorization code automatically.
-4. Playlists will appear in the left pane with thumbnails and track counts. Select one.
-5. Set the alarm time using the time picker and adjust volume with the slider.
-6. Click `Set Alarm` to schedule playback.
-7. Click `Manage Alarms` to view or delete scheduled alarms.
+1. **Lock-based protection**: All critical sections are guarded by locks
+2. **Decorator pattern**: Consistent application of locks via @thread_safe_api_call
+3. **Command queue**: Optional alternative for serializing API requests
+4. **Comprehensive testing**: Test suite covering concurrent scenarios
 
-## Project Structure
-
-```
-Alarmify/
-├── main.py              # Entry point
-├── gui.py               # PyQt5 GUI with all UI components
-├── alarm.py             # Alarm scheduling and management
-├── spotify_api/
-│   └── spotify_api.py   # Spotify Web API wrapper
-├── tests/
-│   ├── test_alarm.py    # Alarm module tests
-│   └── test_spotify_api.py  # API module tests
-├── requirements.txt     # Python dependencies
-└── spotify_style.qss    # Qt stylesheet for dark theme
-```
-
-## Running Tests
-
-```powershell
-python -m pytest tests/ -v
-```
-
-## Notes
-
-- The app starts a short-lived local HTTP server to capture the OAuth redirect; make sure the redirect URI host/port are free and match your Spotify app settings.
-- Spotify Premium is required for playback control features.
-- Instead of using the Settings dialog, you can set environment variables manually:
-
-```powershell
-$env:SPOTIPY_CLIENT_ID = 'your_client_id'
-$env:SPOTIPY_CLIENT_SECRET = 'your_client_secret'
-$env:SPOTIPY_REDIRECT_URI = 'http://localhost:8888/callback'
-```
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| "Spotify credentials not set" | Open Settings and enter your API credentials |
-| Playlist images not loading | Check internet connection; images load in background |
-| "No active device" error | Open Spotify on a device first, then set the alarm |
-| OAuth redirect fails | Ensure the redirect URI matches your Spotify app settings exactly |
-
-## License
-
-See LICENSE file for details.
+This ensures the Alarmify application is safe for concurrent access from both the GUI thread and the alarm scheduler thread, preventing race conditions, data corruption, and crashes.

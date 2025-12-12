@@ -11,10 +11,11 @@ Features:
 - List all scheduled alarms
 - Remove individual alarms
 - Set volume before playing
+- Thread-safe alarm list management
 
 Dependencies:
 - schedule: Job scheduling library
-- threading: Background execution
+- threading: Background execution and synchronization
 """
 
 import schedule  # Job scheduling library
@@ -46,6 +47,9 @@ class Alarm:
         # Reference to scheduler thread
         self.scheduler_thread = None
 
+        # Thread safety: Lock for protecting alarm list modifications
+        self._alarms_lock = threading.Lock()
+
     def set_alarm(self, time_str, playlist_name, playlist_uri, spotify_api, volume=80):
         """
         Schedule a new alarm.
@@ -69,7 +73,7 @@ class Alarm:
             volume                   # Volume argument
         )
 
-        # Store alarm info for management UI
+        # Store alarm info for management UI (thread-safe)
         alarm_info = {
             'time': time_str,        # Alarm time
             'playlist': playlist_name,  # Playlist name for display
@@ -77,7 +81,9 @@ class Alarm:
             'volume': volume,        # Volume setting
             'job': job               # Reference to schedule.Job for removal
         }
-        self.alarms.append(alarm_info)
+        
+        with self._alarms_lock:
+            self.alarms.append(alarm_info)
 
         # Start scheduler thread if not already running
         self._ensure_scheduler_running()
@@ -147,16 +153,17 @@ class Alarm:
                 - playlist_uri: Playlist URI
                 - volume: Volume percentage
         """
-        # Return copy without 'job' key (internal implementation detail)
-        return [
-            {
-                'time': a['time'],
-                'playlist': a['playlist'],
-                'playlist_uri': a['playlist_uri'],
-                'volume': a['volume']
-            }
-            for a in self.alarms
-        ]
+        # Return copy without 'job' key (internal implementation detail, thread-safe)
+        with self._alarms_lock:
+            return [
+                {
+                    'time': a['time'],
+                    'playlist': a['playlist'],
+                    'playlist_uri': a['playlist_uri'],
+                    'volume': a['volume']
+                }
+                for a in self.alarms
+            ]
 
     def remove_alarm(self, time_str):
         """
@@ -167,20 +174,22 @@ class Alarm:
         Args:
             time_str: Time of alarm to remove (HH:MM format).
         """
-        # Find and remove matching alarms
-        for alarm in self.alarms[:]:  # Iterate copy to allow removal
-            if alarm['time'] == time_str:
-                # Cancel the scheduled job
-                schedule.cancel_job(alarm['job'])
-                # Remove from our list
-                self.alarms.remove(alarm)
-                break  # Remove first match only
+        # Find and remove matching alarms (thread-safe)
+        with self._alarms_lock:
+            for alarm in self.alarms[:]:  # Iterate copy to allow removal
+                if alarm['time'] == time_str:
+                    # Cancel the scheduled job
+                    schedule.cancel_job(alarm['job'])
+                    # Remove from our list
+                    self.alarms.remove(alarm)
+                    break  # Remove first match only
 
     def clear_all_alarms(self):
         """Remove all scheduled alarms."""
-        for alarm in self.alarms:
-            schedule.cancel_job(alarm['job'])
-        self.alarms.clear()
+        with self._alarms_lock:
+            for alarm in self.alarms:
+                schedule.cancel_job(alarm['job'])
+            self.alarms.clear()
 
     def shutdown(self):
         """
@@ -195,6 +204,7 @@ class Alarm:
             if self.scheduler_thread and self.scheduler_thread.is_alive():
                 self.scheduler_thread.join(timeout=2.0)
         
-        for alarm in self.alarms:
-            schedule.cancel_job(alarm['job'])
-        self.alarms.clear()
+        with self._alarms_lock:
+            for alarm in self.alarms:
+                schedule.cancel_job(alarm['job'])
+            self.alarms.clear()
