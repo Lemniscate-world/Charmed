@@ -755,43 +755,83 @@ class SettingsDialog(QDialog):
 
     Allows user to enter Client ID, Client Secret, and Redirect URI.
     Saves credentials to .env file in project directory.
+    Provides help button to guide users through getting credentials.
     """
 
     def __init__(self, parent=None):
         """Initialize the settings dialog with current credentials."""
         super().__init__(parent)
         self.setWindowTitle('Spotify Settings')
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(450)
         self.setModal(True)
 
-        layout = QFormLayout(self)
+        layout = QVBoxLayout(self)
         layout.setSpacing(12)
+
+        # Instructions label at the top
+        instructions = QLabel(
+            "To use Alarmify, you need Spotify API credentials.\n"
+            "Click 'Get Credentials' to create them (takes 2 minutes)."
+        )
+        instructions.setWordWrap(True)
+        instructions.setStyleSheet("color: #b3b3b3; margin-bottom: 10px;")
+        layout.addWidget(instructions)
+
+        # Button to open Spotify Developer Dashboard
+        btn_get_creds = QPushButton('Get Credentials (Open Spotify Developer)', self)
+        btn_get_creds.setStyleSheet(
+            "background-color: #1DB954; color: white; padding: 10px; "
+            "font-weight: bold; border-radius: 5px;"
+        )
+        btn_get_creds.clicked.connect(self._open_spotify_dashboard)
+        layout.addWidget(btn_get_creds)
+
+        # Separator
+        separator = QLabel("— Then paste your credentials below —")
+        separator.setAlignment(Qt.AlignCenter)
+        separator.setStyleSheet("color: #666; margin: 10px 0;")
+        layout.addWidget(separator)
+
+        # Form layout for inputs
+        form_layout = QFormLayout()
+        form_layout.setSpacing(10)
 
         # Client ID input
         self.client_id = QLineEdit(self)
-        self.client_id.setPlaceholderText('Enter your Spotify Client ID')
+        self.client_id.setPlaceholderText('Paste your Client ID here')
 
         # Client Secret input (masked)
         self.client_secret = QLineEdit(self)
-        self.client_secret.setPlaceholderText('Enter your Spotify Client Secret')
+        self.client_secret.setPlaceholderText('Paste your Client Secret here')
         self.client_secret.setEchoMode(QLineEdit.Password)  # Hide secret
 
-        # Redirect URI input
+        # Redirect URI input (pre-filled, user rarely needs to change)
         self.redirect_uri = QLineEdit(self)
-        self.redirect_uri.setPlaceholderText('http://localhost:8888/callback')
+        self.redirect_uri.setText('http://localhost:8888/callback')
+        self.redirect_uri.setStyleSheet("color: #888;")
 
         # Pre-fill with existing values from environment
         load_dotenv()
-        self.client_id.setText(os.getenv('SPOTIPY_CLIENT_ID', ''))
-        self.client_secret.setText(os.getenv('SPOTIPY_CLIENT_SECRET', ''))
-        self.redirect_uri.setText(
-            os.getenv('SPOTIPY_REDIRECT_URI', 'http://localhost:8888/callback')
-        )
+        if os.getenv('SPOTIPY_CLIENT_ID'):
+            self.client_id.setText(os.getenv('SPOTIPY_CLIENT_ID', ''))
+        if os.getenv('SPOTIPY_CLIENT_SECRET'):
+            self.client_secret.setText(os.getenv('SPOTIPY_CLIENT_SECRET', ''))
+        if os.getenv('SPOTIPY_REDIRECT_URI'):
+            self.redirect_uri.setText(os.getenv('SPOTIPY_REDIRECT_URI'))
 
         # Add rows to form
-        layout.addRow('Client ID:', self.client_id)
-        layout.addRow('Client Secret:', self.client_secret)
-        layout.addRow('Redirect URI:', self.redirect_uri)
+        form_layout.addRow('Client ID:', self.client_id)
+        form_layout.addRow('Client Secret:', self.client_secret)
+        form_layout.addRow('Redirect URI:', self.redirect_uri)
+
+        layout.addLayout(form_layout)
+
+        # Help note about redirect URI
+        uri_note = QLabel(
+            "Note: Add this exact Redirect URI in your Spotify app settings."
+        )
+        uri_note.setStyleSheet("color: #888; font-size: 11px;")
+        layout.addWidget(uri_note)
 
         # Buttons row
         btn_layout = QHBoxLayout()
@@ -800,12 +840,36 @@ class SettingsDialog(QDialog):
         btn_cancel.clicked.connect(self.reject)
         btn_layout.addWidget(btn_cancel)
 
-        btn_save = QPushButton('Save', self)
+        btn_save = QPushButton('Save & Connect', self)
         btn_save.clicked.connect(self.save)
         btn_save.setDefault(True)  # Enter key triggers save
+        btn_save.setStyleSheet(
+            "background-color: #1DB954; color: white; padding: 8px 16px;"
+        )
         btn_layout.addWidget(btn_save)
 
-        layout.addRow(btn_layout)
+        layout.addLayout(btn_layout)
+
+    def _open_spotify_dashboard(self):
+        """Open Spotify Developer Dashboard in browser with instructions."""
+        import webbrowser
+        # Show quick instructions
+        QMessageBox.information(
+            self,
+            'How to Get Credentials',
+            "1. Log in with your Spotify account\n"
+            "2. Click 'Create app'\n"
+            "3. Enter any name (e.g., 'Alarmify')\n"
+            "4. Enter any description\n"
+            "5. Set Redirect URI to:\n"
+            "   http://localhost:8888/callback\n"
+            "6. Check 'Web API'\n"
+            "7. Click 'Save'\n"
+            "8. Copy Client ID and Client Secret\n"
+            "9. Paste them in this dialog"
+        )
+        # Open the dashboard
+        webbrowser.open('https://developer.spotify.com/dashboard')
 
     def save(self):
         """Validate and save credentials to .env file."""
