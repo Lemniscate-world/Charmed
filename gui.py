@@ -12,42 +12,41 @@ Dependencies:
 - requests: HTTP library for downloading playlist images
 """
 
-# PyQt5 imports for GUI components
-from PyQt5 import QtWidgets, uic  # Base widgets and UI loader
+from PyQt5 import QtWidgets, uic
 from PyQt5.QtWidgets import (
-    QWidget,           # Base widget class
-    QVBoxLayout,       # Vertical layout manager
-    QHBoxLayout,       # Horizontal layout manager
-    QPushButton,       # Clickable button
-    QTimeEdit,         # Time input spinner
-    QListWidget,       # List display widget
-    QListWidgetItem,   # Item for QListWidget
-    QMessageBox,       # Popup message dialogs
-    QLabel,            # Text/image label
-    QSpacerItem,       # Empty space in layouts
-    QSizePolicy,       # Size policy for widgets
-    QDialog,           # Modal dialog base
-    QLineEdit,         # Single-line text input
-    QFormLayout,       # Form-style layout (label + field)
-    QSlider,           # Slider for volume control
-    QFrame,            # Frame container with border
-    QScrollArea,       # Scrollable container
-    QTableWidget,      # Table display widget
-    QTableWidgetItem,  # Item for QTableWidget
-    QHeaderView,       # Table header control
-    QAbstractItemView, # Item view constants
-    QSystemTrayIcon    # System tray icon for notifications
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QPushButton,
+    QTimeEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QLabel,
+    QSpacerItem,
+    QSizePolicy,
+    QDialog,
+    QLineEdit,
+    QFormLayout,
+    QSlider,
+    QFrame,
+    QScrollArea,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QAbstractItemView,
+    QSystemTrayIcon
 )
-from PyQt5.QtGui import QFont, QPixmap, QIcon  # Font, images, icons
-from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QByteArray, QTimer  # Core Qt utilities
-from pathlib import Path  # Path manipulation
-import os  # Operating system interface
-import requests  # HTTP requests for image downloads
-from dotenv import load_dotenv  # Environment variable loading
+from PyQt5.QtGui import QFont, QPixmap, QIcon
+from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QByteArray, QTimer
+from pathlib import Path
+import os
+import requests
+from dotenv import load_dotenv
+import re
 
-# Local module imports
-from spotify_api.spotify_api import SpotifyAPI  # Spotify API wrapper
-from alarm import Alarm  # Alarm scheduling
+from spotify_api.spotify_api import SpotifyAPI
+from alarm import Alarm
 from logging_config import get_logger, get_log_files, read_log_file, get_current_log_file
 
 logger = get_logger(__name__)
@@ -60,7 +59,6 @@ class ImageLoaderThread(QThread):
     Prevents UI freezing while fetching images from Spotify CDN.
     Emits a signal with the image data when download completes.
     """
-    # Signal emitted when image is loaded: (playlist_id, QPixmap)
     image_loaded = pyqtSignal(str, QPixmap)
 
     def __init__(self, playlist_id, image_url):
@@ -72,9 +70,9 @@ class ImageLoaderThread(QThread):
             image_url: URL of the image to download.
         """
         super().__init__()
-        self.playlist_id = playlist_id  # Store playlist ID for signal
-        self.image_url = image_url      # URL to download
-        self._is_running = True         # Flag for graceful shutdown
+        self.playlist_id = playlist_id
+        self.image_url = image_url
+        self._is_running = True
 
     def run(self):
         """
@@ -87,22 +85,18 @@ class ImageLoaderThread(QThread):
             return
         
         try:
-            # Download image data from URL
             response = requests.get(self.image_url, timeout=10)
-            response.raise_for_status()  # Raise exception for HTTP errors
+            response.raise_for_status()
 
             if not self._is_running:
                 return
 
-            # Convert raw bytes to QPixmap
             pixmap = QPixmap()
             pixmap.loadFromData(QByteArray(response.content))
 
-            # Emit signal with playlist ID and loaded pixmap
             if self._is_running:
                 self.image_loaded.emit(self.playlist_id, pixmap)
         except Exception as e:
-            # On error, emit empty pixmap
             if self._is_running:
                 logger.warning(f'Failed to load playlist image from {self.image_url}: {e}')
                 self.image_loaded.emit(self.playlist_id, QPixmap())
@@ -134,47 +128,40 @@ class PlaylistItemWidget(QWidget):
         """
         super().__init__(parent)
 
-        # Store playlist data for later retrieval
         self.playlist_data = playlist_data
 
-        # Main horizontal layout: [Image] [Text Info]
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)  # Small margins
-        layout.setSpacing(12)  # Space between image and text
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(12)
 
-        # Playlist cover image label (64x64 placeholder)
         self.image_label = QLabel()
-        self.image_label.setFixedSize(64, 64)  # Fixed size for consistency
+        self.image_label.setFixedSize(64, 64)
         self.image_label.setStyleSheet(
-            "background-color: #282828; border-radius: 4px;"  # Dark placeholder
+            "background-color: #282828; border-radius: 4px;"
         )
-        self.image_label.setAlignment(Qt.AlignCenter)  # Center any content
+        self.image_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.image_label)
 
-        # Vertical layout for text info
         text_layout = QVBoxLayout()
-        text_layout.setSpacing(2)  # Tight spacing between lines
+        text_layout.setSpacing(2)
 
-        # Playlist name (bold, larger font)
         self.name_label = QLabel(playlist_data.get('name', 'Unknown'))
         self.name_label.setFont(QFont('Arial', 11, QFont.Bold))
-        self.name_label.setStyleSheet("color: #FFFFFF;")  # White text
+        self.name_label.setStyleSheet("color: #FFFFFF;")
         text_layout.addWidget(self.name_label)
 
-        # Track count and owner (smaller, gray text)
         track_count = playlist_data.get('track_count', 0)
         owner = playlist_data.get('owner', 'Unknown')
         info_text = f"{track_count} tracks - by {owner}"
         self.info_label = QLabel(info_text)
         self.info_label.setFont(QFont('Arial', 9))
-        self.info_label.setStyleSheet("color: #B3B3B3;")  # Gray text
+        self.info_label.setStyleSheet("color: #B3B3B3;")
         text_layout.addWidget(self.info_label)
 
-        # Add stretch to push text to top
         text_layout.addStretch()
 
         layout.addLayout(text_layout)
-        layout.addStretch()  # Push content to left
+        layout.addStretch()
 
     def set_image(self, pixmap):
         """
@@ -184,7 +171,6 @@ class PlaylistItemWidget(QWidget):
             pixmap: QPixmap of the cover image.
         """
         if not pixmap.isNull():
-            # Scale to fit while maintaining aspect ratio
             scaled = pixmap.scaled(
                 64, 64,
                 Qt.KeepAspectRatio,
@@ -212,16 +198,11 @@ class AlarmApp(QtWidgets.QMainWindow):
         
         logger.info('Initializing Alarmify main window')
 
-        # Track active image loader threads to prevent garbage collection
         self.image_loaders = []
-
-        # Map playlist IDs to their widget items for image updates
         self.playlist_widgets = {}
 
-        # Build the UI programmatically (no .ui file needed)
         self._build_ui()
 
-        # Apply Spotify-style stylesheet if available
         style_path = Path(__file__).resolve().parent / 'spotify_style.qss'
         if style_path.exists():
             try:
@@ -231,114 +212,154 @@ class AlarmApp(QtWidgets.QMainWindow):
             except Exception as e:
                 logger.warning(f'Failed to load stylesheet: {e}')
 
-        # Try to initialize Spotify API with existing credentials
         try:
             self.spotify_api = SpotifyAPI()
         except RuntimeError as e:
-            # No credentials configured yet - show warning
             logger.warning('Spotify credentials not configured')
-            QMessageBox.warning(self, 'Spotify credentials', str(e))
+            QMessageBox.warning(
+                self,
+                'Spotify Credentials Required',
+                f'{e}\n\nPlease click the Settings button (⚙) to configure your Spotify API credentials.'
+            )
             self.spotify_api = None
 
-        # Initialize alarm manager with failure callback
-        self.alarm = Alarm(alarm_failure_callback=self._on_alarm_failure)
+        self.alarm = Alarm(self)
 
-        # Setup system tray icon for notifications
-        self._setup_system_tray()
-
-        # Connect button signals to handlers
         self.login_button.clicked.connect(self.login_to_spotify)
         self.set_alarm_button.clicked.connect(self.set_alarm)
         self.settings_button.clicked.connect(self.open_settings)
         self.manage_alarms_button.clicked.connect(self.open_alarm_manager)
         self.view_logs_button.clicked.connect(self.open_log_viewer)
 
-        # Disable buttons if no credentials
         if not self.spotify_api:
             self.login_button.setEnabled(False)
             self.set_alarm_button.setEnabled(False)
 
-        # Update auth status display
+        self._setup_system_tray()
         self._update_auth_status()
+        self._start_device_status_monitor()
 
-        # Auto-connect: If already authenticated, load playlists automatically
         if self.spotify_api and self.spotify_api.is_authenticated():
             logger.info('Auto-loading playlists (cached authentication)')
             self._load_playlists()
-            
-        # Start device status update timer
-        self._device_update_timer = QTimer()
-        self._device_update_timer.timeout.connect(self._update_device_status)
-        self._device_update_timer.start(30000)  # Update every 30 seconds
+
+    def _setup_system_tray(self):
+        """Setup system tray icon for notifications."""
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray_icon = None
+            return
+
+        self.tray_icon = QSystemTrayIcon(self)
+        
+        icon_path = Path(__file__).resolve().parent / 'icon.png'
+        if icon_path.exists():
+            self.tray_icon.setIcon(QIcon(str(icon_path)))
+        else:
+            self.tray_icon.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
+        
+        self.tray_icon.setToolTip('Alarmify')
+        self.tray_icon.show()
+
+    def show_tray_notification(self, title, message, icon_type=QSystemTrayIcon.Information):
+        """
+        Show a system tray notification.
+
+        Args:
+            title: Notification title.
+            message: Notification message.
+            icon_type: QSystemTrayIcon icon type (Information, Warning, Critical).
+        """
+        if self.tray_icon and self.tray_icon.supportsMessages():
+            self.tray_icon.showMessage(title, message, icon_type, 5000)
+
+    def _start_device_status_monitor(self):
+        """Start periodic monitoring of active Spotify device."""
+        self.device_status_timer = QTimer(self)
+        self.device_status_timer.timeout.connect(self._update_device_status)
+        self.device_status_timer.start(10000)
+        self._update_device_status()
+
+    def _update_device_status(self):
+        """Update the device status indicator in the UI header."""
+        if not self.spotify_api or not self.spotify_api.is_authenticated():
+            self.device_status_label.setText('No active device')
+            self.device_status_label.setStyleSheet("color: #B3B3B3;")
+            return
+
+        try:
+            device = self.spotify_api.get_active_device()
+            if device:
+                device_name = device.get('name', 'Unknown Device')
+                device_type = device.get('type', 'Device')
+                self.device_status_label.setText(f'🔊 {device_name} ({device_type})')
+                self.device_status_label.setStyleSheet("color: #1DB954;")
+            else:
+                self.device_status_label.setText('No active device')
+                self.device_status_label.setStyleSheet("color: #FFA500;")
+        except Exception:
+            self.device_status_label.setText('Device check failed')
+            self.device_status_label.setStyleSheet("color: #B3B3B3;")
 
     def _build_ui(self):
         """Build the complete UI layout programmatically."""
-        # Window configuration
         self.setWindowTitle('Alarmify')
-        self.setMinimumSize(700, 500)  # Minimum window size
+        self.setMinimumSize(700, 500)
 
-        # Central widget container
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
 
-        # Root vertical layout
         root_layout = QVBoxLayout(self.central_widget)
         root_layout.setContentsMargins(16, 16, 16, 16)
         root_layout.setSpacing(16)
 
-        # === HEADER SECTION ===
         header = QHBoxLayout()
 
-        # App logo/title
         logo = QLabel('Alarmify')
         logo.setObjectName('appLogo')
         logo.setFont(QFont('Arial', 24, QFont.Bold))
-        logo.setStyleSheet("color: #1DB954;")  # Spotify green
+        logo.setStyleSheet("color: #1DB954;")
         header.addWidget(logo)
 
-        # Spacer to push auth status and settings to right
         header.addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
 
-        # Authentication status label
+        status_layout = QVBoxLayout()
+        status_layout.setSpacing(4)
+
         self.auth_status_label = QLabel('Not connected')
         self.auth_status_label.setObjectName('authStatus')
         self.auth_status_label.setStyleSheet("color: #B3B3B3;")
-        header.addWidget(self.auth_status_label)
+        status_layout.addWidget(self.auth_status_label)
 
-        # Device status label
-        self.device_status_label = QLabel('')
+        self.device_status_label = QLabel('No active device')
+        self.device_status_label.setObjectName('deviceStatus')
         self.device_status_label.setStyleSheet("color: #B3B3B3; font-size: 10px;")
-        header.addWidget(self.device_status_label)
+        status_layout.addWidget(self.device_status_label)
 
-        # Settings button (gear icon)
-        self.settings_button = QPushButton('\u2699')  # Unicode gear
+        header.addLayout(status_layout)
+
+        self.settings_button = QPushButton('\u2699')
         self.settings_button.setFixedSize(36, 36)
         self.settings_button.setToolTip('Settings')
         header.addWidget(self.settings_button)
 
         root_layout.addLayout(header)
 
-        # === MAIN CONTENT SECTION ===
         content = QHBoxLayout()
         content.setSpacing(20)
 
-        # --- LEFT PANEL: Playlist Browser ---
         left_panel = QVBoxLayout()
 
-        # Playlist header
         playlist_header = QLabel('Your Playlists')
         playlist_header.setFont(QFont('Arial', 14, QFont.Bold))
         playlist_header.setStyleSheet("color: #FFFFFF;")
         left_panel.addWidget(playlist_header)
 
-        # Playlist list widget with custom items
         self.playlist_list = QListWidget()
         self.playlist_list.setObjectName('playlistList')
         self.playlist_list.setMinimumWidth(350)
-        self.playlist_list.setSpacing(2)  # Space between items
+        self.playlist_list.setSpacing(2)
         left_panel.addWidget(self.playlist_list)
 
-        # Buttons row
         btn_layout = QHBoxLayout()
 
         self.login_button = QPushButton('Login to Spotify')
@@ -352,11 +373,9 @@ class AlarmApp(QtWidgets.QMainWindow):
         left_panel.addLayout(btn_layout)
         content.addLayout(left_panel, stretch=2)
 
-        # --- RIGHT PANEL: Alarm Controls ---
         right_panel = QVBoxLayout()
         right_panel.setSpacing(16)
 
-        # Alarm Time section
         time_label = QLabel('Alarm Time')
         time_label.setFont(QFont('Arial', 14, QFont.Bold))
         time_label.setStyleSheet("color: #FFFFFF;")
@@ -369,19 +388,17 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.time_input.setMinimumHeight(50)
         right_panel.addWidget(self.time_input)
 
-        # Volume Control section
         volume_label = QLabel('Alarm Volume')
         volume_label.setFont(QFont('Arial', 14, QFont.Bold))
         volume_label.setStyleSheet("color: #FFFFFF;")
         right_panel.addWidget(volume_label)
 
-        # Volume slider with value display
         volume_row = QHBoxLayout()
 
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setMinimum(0)
         self.volume_slider.setMaximum(100)
-        self.volume_slider.setValue(80)  # Default 80%
+        self.volume_slider.setValue(80)
         self.volume_slider.setObjectName('volumeSlider')
         self.volume_slider.valueChanged.connect(self._on_volume_changed)
         volume_row.addWidget(self.volume_slider)
@@ -393,17 +410,14 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         right_panel.addLayout(volume_row)
 
-        # Manage Alarms button
         self.manage_alarms_button = QPushButton('Manage Alarms')
         self.manage_alarms_button.setObjectName('manageAlarmsButton')
         right_panel.addWidget(self.manage_alarms_button)
 
-        # View Logs button
         self.view_logs_button = QPushButton('View Logs')
         self.view_logs_button.setObjectName('viewLogsButton')
         right_panel.addWidget(self.view_logs_button)
 
-        # Push everything up
         right_panel.addStretch()
 
         content.addLayout(right_panel, stretch=1)
@@ -412,73 +426,6 @@ class AlarmApp(QtWidgets.QMainWindow):
     def _on_volume_changed(self, value):
         """Update volume label when slider moves."""
         self.volume_value_label.setText(f'{value}%')
-    
-    def _setup_system_tray(self):
-        """Setup system tray icon for notifications."""
-        self.tray_icon = QSystemTrayIcon(self)
-        # Use default application icon or create a simple one
-        icon = self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay)
-        self.tray_icon.setIcon(icon)
-        self.tray_icon.setToolTip('Alarmify')
-        self.tray_icon.show()
-    
-    def _show_notification(self, title, message, icon_type=QSystemTrayIcon.Information):
-        """
-        Show system tray notification and in-app alert.
-        
-        Args:
-            title: Notification title
-            message: Notification message
-            icon_type: Icon type (Information, Warning, Critical)
-        """
-        # Show system tray notification
-        if self.tray_icon.isSystemTrayAvailable():
-            self.tray_icon.showMessage(title, message, icon_type, 5000)
-        
-        # Also show in-app message box if critical
-        if icon_type == QSystemTrayIcon.Critical:
-            QMessageBox.critical(self, title, message)
-    
-    def _on_alarm_failure(self, time_str, playlist, error_message):
-        """
-        Callback for alarm failures.
-        
-        Args:
-            time_str: Time of the failed alarm
-            playlist: Playlist name
-            error_message: Error description
-        """
-        title = 'Alarm Failed'
-        message = f'Alarm at {time_str} failed to play "{playlist}".\n\n{error_message}'
-        logger.error(f'Alarm failure callback: {message}')
-        self._show_notification(title, message, QSystemTrayIcon.Critical)
-    
-    def _update_device_status(self):
-        """Update device connection status display."""
-        if not self.spotify_api or not self.spotify_api.is_authenticated():
-            self.device_status_label.setText('')
-            return
-        
-        try:
-            devices = self.spotify_api.get_all_devices()
-            if not devices:
-                self.device_status_label.setText('⚠️ No devices')
-                self.device_status_label.setStyleSheet("color: #FFA500; font-size: 10px;")
-                self.device_status_label.setToolTip('No Spotify devices found')
-            else:
-                active_device = next((d for d in devices if d.get('is_active')), None)
-                if active_device:
-                    device_name = active_device.get('name', 'Unknown')
-                    self.device_status_label.setText(f'🔊 {device_name}')
-                    self.device_status_label.setStyleSheet("color: #1DB954; font-size: 10px;")
-                    self.device_status_label.setToolTip(f'Active device: {device_name}')
-                else:
-                    device_names = [d.get('name', 'Unknown') for d in devices]
-                    self.device_status_label.setText(f'💤 {len(devices)} device(s)')
-                    self.device_status_label.setStyleSheet("color: #B3B3B3; font-size: 10px;")
-                    self.device_status_label.setToolTip(f'Available devices: {", ".join(device_names)}')
-        except Exception:
-            self.device_status_label.setText('')
 
     def _update_auth_status(self):
         """Update the authentication status display."""
@@ -487,45 +434,50 @@ class AlarmApp(QtWidgets.QMainWindow):
             if user:
                 name = user.get('display_name', 'User')
                 self.auth_status_label.setText(f'Connected as {name}')
-                self.auth_status_label.setStyleSheet("color: #1DB954;")  # Green
+                self.auth_status_label.setStyleSheet("color: #1DB954;")
             else:
                 self.auth_status_label.setText('Connected')
                 self.auth_status_label.setStyleSheet("color: #1DB954;")
-            # Update device status when auth status changes
             self._update_device_status()
         else:
             self.auth_status_label.setText('Not connected')
-            self.auth_status_label.setStyleSheet("color: #B3B3B3;")  # Gray
+            self.auth_status_label.setStyleSheet("color: #B3B3B3;")
             self.device_status_label.setText('')
 
     def login_to_spotify(self):
         """Handle login button click - authenticate with Spotify."""
         if not self.spotify_api:
             QMessageBox.warning(
-                self, 
-                'Configuration Required', 
-                'Spotify credentials are not configured. Please click the settings button to add your credentials.'
+                self,
+                'Missing Credentials',
+                'Spotify credentials are not configured.\n\n'
+                'Please click the Settings button (⚙) to enter your Spotify API credentials.'
             )
             return
 
         logger.info('User initiated Spotify login')
         try:
-            # Perform OAuth authentication
             self.spotify_api.authenticate()
-
-            # Update auth status display
             self._update_auth_status()
-
-            # Load playlists with detailed info
             self._load_playlists()
-            
-            self._show_notification('Login Successful', 'Successfully connected to Spotify')
+            self._update_device_status()
             logger.info('Spotify login successful')
 
         except Exception as e:
+            error_msg = str(e)
+            actionable_msg = 'Could not login to Spotify.'
+            
+            if 'redirect_uri' in error_msg.lower():
+                actionable_msg += '\n\n⚠ Check that your Redirect URI matches the one configured in your Spotify Developer Dashboard.'
+            elif 'client' in error_msg.lower():
+                actionable_msg += '\n\n⚠ Verify your Client ID and Client Secret are correct in Settings.'
+            elif 'network' in error_msg.lower() or 'connection' in error_msg.lower():
+                actionable_msg += '\n\n⚠ Check your internet connection and try again.'
+            else:
+                actionable_msg += f'\n\n⚠ Error: {error_msg}'
+            
             logger.error(f'Spotify login failed: {e}', exc_info=True)
-            error_msg = f'Failed to authenticate with Spotify.\n\nError: {str(e)}\n\nPlease check your credentials and internet connection.'
-            QMessageBox.critical(self, 'Login Failed', error_msg)
+            QMessageBox.critical(self, 'Login Failed', actionable_msg)
 
     def _load_playlists(self):
         """Load user's playlists with thumbnails and metadata."""
@@ -534,32 +486,24 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         logger.info('Loading user playlists')
         try:
-            # Get detailed playlist info
             playlists = self.spotify_api.get_playlists_detailed()
 
-            # Clear existing items
             self.playlist_list.clear()
             self.playlist_widgets.clear()
 
             for playlist in playlists:
-                # Create custom widget for this playlist
                 widget = PlaylistItemWidget(playlist)
 
-                # Create list item with appropriate size
                 item = QListWidgetItem(self.playlist_list)
-                item.setSizeHint(QSize(340, 76))  # Height for image + padding
+                item.setSizeHint(QSize(340, 76))
 
-                # Store playlist data in item for retrieval
                 item.setData(Qt.UserRole, playlist)
 
-                # Set the custom widget
                 self.playlist_list.setItemWidget(item, widget)
 
-                # Store reference for image updates
                 playlist_id = playlist.get('id', '')
                 self.playlist_widgets[playlist_id] = widget
 
-                # Load image in background if URL exists
                 image_url = playlist.get('image_url')
                 if image_url:
                     self._load_playlist_image(playlist_id, image_url)
@@ -570,26 +514,20 @@ class AlarmApp(QtWidgets.QMainWindow):
             logger.error(f'Failed to load playlists: {e}', exc_info=True)
             QMessageBox.warning(self, 'Failed to Load Playlists', str(e))
         except Exception as e:
+            error_msg = f'Could not load playlists: {str(e)}\n\n'
+            error_msg += '⚠ Make sure you are logged into Spotify and try clicking "Login to Spotify" again.'
             logger.error(f'Unexpected error loading playlists: {e}', exc_info=True)
-            QMessageBox.warning(self, 'Unexpected Error', f'Could not load playlists: {str(e)}')
+            QMessageBox.warning(self, 'Error Loading Playlists', error_msg)
 
     def _load_playlist_image(self, playlist_id, image_url):
         """Start background thread to load playlist cover image."""
-        # Create loader thread
         loader = ImageLoaderThread(playlist_id, image_url)
-
-        # Connect signal to update handler
         loader.image_loaded.connect(self._on_image_loaded)
-
-        # Keep reference to prevent garbage collection
         self.image_loaders.append(loader)
-
-        # Start the download
         loader.start()
 
     def _on_image_loaded(self, playlist_id, pixmap):
         """Handle loaded image - update the playlist widget."""
-        # Find the widget for this playlist
         widget = self.playlist_widgets.get(playlist_id)
         if widget and not pixmap.isNull():
             widget.set_image(pixmap)
@@ -599,7 +537,6 @@ class AlarmApp(QtWidgets.QMainWindow):
         logger.info('Opening settings dialog')
         dlg = SettingsDialog(self)
         if dlg.exec_() == QDialog.Accepted:
-            # Reload environment and recreate SpotifyAPI
             load_dotenv(override=True)
             try:
                 self.spotify_api = SpotifyAPI()
@@ -608,16 +545,17 @@ class AlarmApp(QtWidgets.QMainWindow):
                 self._update_auth_status()
                 logger.info('Spotify credentials updated successfully')
                 QMessageBox.information(
-                    self, 
-                    'Settings Saved', 
-                    'Spotify credentials saved successfully. Please click "Login to Spotify" to connect.'
+                    self,
+                    'Settings Saved',
+                    'Spotify credentials saved successfully.\n\nPlease click "Login to Spotify" to authenticate.'
                 )
-            except RuntimeError as e:
-                logger.error(f'Failed to reload Spotify API after settings update: {e}', exc_info=True)
-                QMessageBox.warning(self, 'Configuration Error', str(e))
             except Exception as e:
-                logger.error(f'Unexpected error reloading Spotify API: {e}', exc_info=True)
-                QMessageBox.warning(self, 'Unexpected Error', f'Could not initialize Spotify API: {str(e)}')
+                logger.error(f'Failed to reload Spotify API after settings update: {e}', exc_info=True)
+                QMessageBox.warning(
+                    self,
+                    'Configuration Error',
+                    f'Could not load Spotify API with the provided credentials:\n\n{str(e)}'
+                )
 
     def open_alarm_manager(self):
         """Open the alarm manager dialog."""
@@ -633,58 +571,121 @@ class AlarmApp(QtWidgets.QMainWindow):
 
     def set_alarm(self):
         """Set an alarm for the selected playlist."""
-        # Get selected time
         time_str = self.time_input.time().toString('HH:mm')
 
-        # Get selected playlist
+        if not self._validate_alarm_time(time_str):
+            return
+
         current = self.playlist_list.currentItem()
         if current is None:
             logger.warning('User attempted to set alarm without selecting a playlist')
-            QMessageBox.warning(self, 'No Playlist Selected', 'Please select a playlist from the list first.')
+            QMessageBox.warning(
+                self,
+                'No Playlist Selected',
+                'Please select a playlist from the list before setting an alarm.'
+            )
             return
 
-        # Get playlist data from item
         playlist_data = current.data(Qt.UserRole)
         if not playlist_data:
-            QMessageBox.warning(self, 'Error', 'Could not retrieve playlist information.')
+            QMessageBox.warning(
+                self,
+                'Invalid Playlist',
+                'Could not retrieve playlist information. Please try selecting the playlist again.'
+            )
             return
 
         playlist_name = playlist_data.get('name', 'Unknown')
         playlist_uri = playlist_data.get('uri')
         
         if not playlist_uri:
-            QMessageBox.warning(self, 'Error', 'Playlist URI is missing.')
+            QMessageBox.warning(
+                self,
+                'Invalid Playlist',
+                'Playlist URI is missing. Please try reloading your playlists by logging in again.'
+            )
             return
 
         if not self.spotify_api:
             logger.error('User attempted to set alarm without Spotify credentials')
             QMessageBox.warning(
-                self, 
-                'Not Authenticated', 
-                'Please log in to Spotify first by clicking the "Login to Spotify" button.'
+                self,
+                'Not Authenticated',
+                'Spotify credentials are not configured.\n\n'
+                'Please click Settings (⚙) to configure your credentials.'
             )
             return
 
-        # Get volume setting
+        if not self.spotify_api.is_authenticated():
+            QMessageBox.warning(
+                self,
+                'Not Logged In',
+                'You are not logged into Spotify.\n\n'
+                'Please click "Login to Spotify" to authenticate.'
+            )
+            return
+
         volume = self.volume_slider.value()
 
         logger.info(f'User setting alarm: time={time_str}, playlist={playlist_name}, volume={volume}%')
 
-        # Set the alarm with both name and URI, with validation
         try:
             self.alarm.set_alarm(time_str, playlist_name, playlist_uri, self.spotify_api, volume)
-            
-            message = f'Alarm successfully set for {time_str}\n\nPlaylist: {playlist_name}\nVolume: {volume}%'
-            QMessageBox.information(self, 'Alarm Set', message)
-            self._show_notification('Alarm Set', f'{time_str} - {playlist_name}')
+
+            message = f'Alarm scheduled for {time_str}\n\nPlaylist: {playlist_name}\nVolume: {volume}%\n\nMake sure a Spotify device is active when the alarm triggers.'
+            QMessageBox.information(self, 'Alarm Set Successfully', message)
             logger.info('Alarm set successfully by user')
-            
+
         except ValueError as e:
             logger.error(f'Invalid time format for alarm: {e}')
-            QMessageBox.warning(self, 'Invalid Time Format', str(e))
+            QMessageBox.warning(
+                self,
+                'Invalid Alarm Time',
+                f'{str(e)}\n\n'
+                'Please enter a valid time in HH:MM format (24-hour).'
+            )
         except Exception as e:
             logger.error(f'Failed to set alarm: {e}', exc_info=True)
-            QMessageBox.critical(self, 'Failed to Set Alarm', f'Could not set alarm: {str(e)}')
+            QMessageBox.critical(
+                self,
+                'Failed to Set Alarm',
+                f'Could not set alarm: {str(e)}\n\n'
+                'Please check your settings and try again.'
+            )
+
+    def _validate_alarm_time(self, time_str):
+        """
+        Validate alarm time format and value.
+
+        Args:
+            time_str: Time string in HH:MM format.
+
+        Returns:
+            bool: True if valid, False otherwise (displays error message).
+        """
+        if not re.match(r'^([0-1][0-9]|2[0-3]):[0-5][0-9]$', time_str):
+            QMessageBox.warning(
+                self,
+                'Invalid Time Format',
+                f'Invalid time format: {time_str}\n\n'
+                'Please use HH:MM format (24-hour), e.g., 07:30 or 14:45'
+            )
+            return False
+
+        try:
+            hours, minutes = map(int, time_str.split(':'))
+            if not (0 <= hours <= 23 and 0 <= minutes <= 59):
+                raise ValueError('Time out of range')
+        except ValueError:
+            QMessageBox.warning(
+                self,
+                'Invalid Time',
+                f'Invalid time: {time_str}\n\n'
+                'Hours must be 00-23 and minutes must be 00-59'
+            )
+            return False
+
+        return True
 
     def closeEvent(self, event):
         """
@@ -704,6 +705,9 @@ class AlarmApp(QtWidgets.QMainWindow):
 
     def _cleanup_resources(self):
         """Clean up all background threads and resources."""
+        if hasattr(self, 'device_status_timer'):
+            self.device_status_timer.stop()
+
         for loader in self.image_loaders:
             if loader.isRunning():
                 loader.stop()
@@ -715,6 +719,9 @@ class AlarmApp(QtWidgets.QMainWindow):
             self.alarm.shutdown()
         
         logger.info('Resource cleanup complete')
+
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            self.tray_icon.hide()
 
 
 class AlarmManagerDialog(QDialog):
@@ -746,12 +753,10 @@ class AlarmManagerDialog(QDialog):
         """Build the dialog UI."""
         layout = QVBoxLayout(self)
 
-        # Header
         header = QLabel('Scheduled Alarms')
         header.setFont(QFont('Arial', 14, QFont.Bold))
         layout.addWidget(header)
 
-        # Alarms table
         self.table = QTableWidget()
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels(['Time', 'Playlist', 'Volume', 'Actions'])
@@ -760,7 +765,6 @@ class AlarmManagerDialog(QDialog):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         layout.addWidget(self.table)
 
-        # Close button
         btn_close = QPushButton('Close')
         btn_close.clicked.connect(self.accept)
         layout.addWidget(btn_close)
@@ -771,16 +775,10 @@ class AlarmManagerDialog(QDialog):
         self.table.setRowCount(len(alarms))
 
         for row, alarm_info in enumerate(alarms):
-            # Time column
             self.table.setItem(row, 0, QTableWidgetItem(alarm_info.get('time', '')))
-
-            # Playlist column
             self.table.setItem(row, 1, QTableWidgetItem(alarm_info.get('playlist', '')))
-
-            # Volume column
             self.table.setItem(row, 2, QTableWidgetItem(f"{alarm_info.get('volume', 80)}%"))
 
-            # Delete button
             btn_delete = QPushButton('Delete')
             btn_delete.clicked.connect(lambda checked, r=row: self._delete_alarm(r))
             self.table.setCellWidget(row, 3, btn_delete)
@@ -791,7 +789,7 @@ class AlarmManagerDialog(QDialog):
         if 0 <= row < len(alarms):
             alarm_info = alarms[row]
             self.alarm_manager.remove_alarm(alarm_info.get('time', ''))
-            self._load_alarms()  # Refresh table
+            self._load_alarms()
 
 
 class SettingsDialog(QDialog):
@@ -813,7 +811,6 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-        # Instructions label at the top
         instructions = QLabel(
             "To use Alarmify, you need Spotify API credentials.\n"
             "Click 'Get Credentials' to create them (takes 2 minutes)."
@@ -822,7 +819,6 @@ class SettingsDialog(QDialog):
         instructions.setStyleSheet("color: #b3b3b3; margin-bottom: 10px;")
         layout.addWidget(instructions)
 
-        # Button to open Spotify Developer Dashboard
         btn_get_creds = QPushButton('Get Credentials (Open Spotify Developer)', self)
         btn_get_creds.setStyleSheet(
             "background-color: #1DB954; color: white; padding: 10px; "
@@ -831,31 +827,25 @@ class SettingsDialog(QDialog):
         btn_get_creds.clicked.connect(self._open_spotify_dashboard)
         layout.addWidget(btn_get_creds)
 
-        # Separator
         separator = QLabel("— Then paste your credentials below —")
         separator.setAlignment(Qt.AlignCenter)
         separator.setStyleSheet("color: #666; margin: 10px 0;")
         layout.addWidget(separator)
 
-        # Form layout for inputs
         form_layout = QFormLayout()
         form_layout.setSpacing(10)
 
-        # Client ID input
         self.client_id = QLineEdit(self)
         self.client_id.setPlaceholderText('Paste your Client ID here')
 
-        # Client Secret input (masked)
         self.client_secret = QLineEdit(self)
         self.client_secret.setPlaceholderText('Paste your Client Secret here')
-        self.client_secret.setEchoMode(QLineEdit.Password)  # Hide secret
+        self.client_secret.setEchoMode(QLineEdit.Password)
 
-        # Redirect URI input (pre-filled, user rarely needs to change)
         self.redirect_uri = QLineEdit(self)
         self.redirect_uri.setText('http://localhost:8888/callback')
         self.redirect_uri.setStyleSheet("color: #888;")
 
-        # Pre-fill with existing values from environment
         load_dotenv()
         if os.getenv('SPOTIPY_CLIENT_ID'):
             self.client_id.setText(os.getenv('SPOTIPY_CLIENT_ID', ''))
@@ -864,21 +854,18 @@ class SettingsDialog(QDialog):
         if os.getenv('SPOTIPY_REDIRECT_URI'):
             self.redirect_uri.setText(os.getenv('SPOTIPY_REDIRECT_URI'))
 
-        # Add rows to form
         form_layout.addRow('Client ID:', self.client_id)
         form_layout.addRow('Client Secret:', self.client_secret)
         form_layout.addRow('Redirect URI:', self.redirect_uri)
 
         layout.addLayout(form_layout)
 
-        # Help note about redirect URI
         uri_note = QLabel(
             "Note: Add this exact Redirect URI in your Spotify app settings."
         )
         uri_note.setStyleSheet("color: #888; font-size: 11px;")
         layout.addWidget(uri_note)
 
-        # Buttons row
         btn_layout = QHBoxLayout()
 
         btn_cancel = QPushButton('Cancel', self)
@@ -887,7 +874,7 @@ class SettingsDialog(QDialog):
 
         btn_save = QPushButton('Save & Connect', self)
         btn_save.clicked.connect(self.save)
-        btn_save.setDefault(True)  # Enter key triggers save
+        btn_save.setDefault(True)
         btn_save.setStyleSheet(
             "background-color: #1DB954; color: white; padding: 8px 16px;"
         )
@@ -898,7 +885,6 @@ class SettingsDialog(QDialog):
     def _open_spotify_dashboard(self):
         """Open Spotify Developer Dashboard in browser with instructions."""
         import webbrowser
-        # Show quick instructions
         QMessageBox.information(
             self,
             'How to Get Credentials',
@@ -913,31 +899,28 @@ class SettingsDialog(QDialog):
             "8. Copy Client ID and Client Secret\n"
             "9. Paste them in this dialog"
         )
-        # Open the dashboard
         webbrowser.open('https://developer.spotify.com/dashboard')
 
     def save(self):
         """Validate and save credentials to .env file."""
-        # Get project root directory (where this file is located)
         root = Path(__file__).resolve().parent
         env_path = root / '.env'
 
         try:
-            # Extract and clean input values
             cid = self.client_id.text().strip()
             csec = self.client_secret.text().strip()
             ruri = self.redirect_uri.text().strip()
 
-            # Validation: required fields
             if not cid or not csec:
                 QMessageBox.warning(
                     self,
                     'Validation Error',
-                    'Client ID and Client Secret are required fields.\n\nPlease provide both values.'
+                    'Client ID and Client Secret are required.\n\n'
+                    'Get these from your Spotify Developer Dashboard:\n'
+                    'https://developer.spotify.com/dashboard'
                 )
                 return
 
-            # Validation: redirect URI format
             if not ruri:
                 QMessageBox.warning(
                     self,
@@ -945,25 +928,23 @@ class SettingsDialog(QDialog):
                     'Redirect URI is required.\n\nDefault: http://localhost:8888/callback'
                 )
                 return
-                
+
             if not (ruri.startswith('http://') or ruri.startswith('https://')):
                 QMessageBox.warning(
                     self,
                     'Validation Error',
-                    'Redirect URI must start with http:// or https://\n\nExample: http://localhost:8888/callback'
+                    'Redirect URI must start with http:// or https://\n\n'
+                    'This must match the Redirect URI configured in your Spotify app settings.'
                 )
                 return
 
-            # Write credentials to .env file
             with open(env_path, 'w', encoding='utf-8') as f:
                 f.write(f"SPOTIPY_CLIENT_ID={cid}\n")
                 f.write(f"SPOTIPY_CLIENT_SECRET={csec}\n")
                 f.write(f"SPOTIPY_REDIRECT_URI={ruri}\n")
 
-            # Reload environment with new values
             load_dotenv(override=True)
 
-            # Close dialog with success
             self.accept()
 
         except PermissionError:
@@ -975,9 +956,10 @@ class SettingsDialog(QDialog):
         except Exception as e:
             logger.error(f'Failed to save settings: {e}', exc_info=True)
             QMessageBox.critical(
-                self, 
-                'Save Failed', 
-                f'Could not save credentials to .env file.\n\nError: {str(e)}'
+                self,
+                'Save Error',
+                f'Could not save credentials: {str(e)}\n\n'
+                'Check that you have write permissions in the application directory.'
             )
 
 
@@ -1008,7 +990,6 @@ class LogViewerDialog(QDialog):
         """Build the dialog UI."""
         layout = QVBoxLayout(self)
         
-        # Header with title and controls
         header_layout = QHBoxLayout()
         
         title = QLabel('Application Logs')
@@ -1017,7 +998,6 @@ class LogViewerDialog(QDialog):
         
         header_layout.addStretch()
         
-        # Log file selector
         self.log_file_combo = QtWidgets.QComboBox()
         self.log_file_combo.setMinimumWidth(300)
         self.log_file_combo.currentIndexChanged.connect(self._on_log_file_changed)
@@ -1026,34 +1006,28 @@ class LogViewerDialog(QDialog):
         
         layout.addLayout(header_layout)
         
-        # Log text area
         self.log_text = QtWidgets.QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont('Courier New', 9))
         self.log_text.setLineWrapMode(QtWidgets.QTextEdit.NoWrap)
         layout.addWidget(self.log_text)
         
-        # Bottom button row
         btn_layout = QHBoxLayout()
         
-        # Refresh button
         btn_refresh = QPushButton('Refresh')
         btn_refresh.clicked.connect(self._load_logs)
         btn_layout.addWidget(btn_refresh)
         
-        # Export button
         btn_export = QPushButton('Export Logs...')
         btn_export.clicked.connect(self._export_logs)
         btn_layout.addWidget(btn_export)
         
-        # Open log folder button
         btn_open_folder = QPushButton('Open Log Folder')
         btn_open_folder.clicked.connect(self._open_log_folder)
         btn_layout.addWidget(btn_open_folder)
         
         btn_layout.addStretch()
         
-        # Close button
         btn_close = QPushButton('Close')
         btn_close.clicked.connect(self.accept)
         btn_layout.addWidget(btn_close)
@@ -1062,7 +1036,6 @@ class LogViewerDialog(QDialog):
     
     def _load_logs(self):
         """Load and display logs from the current log file."""
-        # Populate log file combo box
         log_files = get_log_files()
         current_text = self.log_file_combo.currentText()
         
@@ -1071,17 +1044,14 @@ class LogViewerDialog(QDialog):
             self.log_text.setPlainText('No log files found.')
             return
         
-        # Add log files to combo box
         for log_file in log_files:
             self.log_file_combo.addItem(log_file.name, log_file)
         
-        # Try to restore previous selection
         if current_text:
             index = self.log_file_combo.findText(current_text)
             if index >= 0:
                 self.log_file_combo.setCurrentIndex(index)
         
-        # Load the selected log file
         self._display_current_log()
     
     def _on_log_file_changed(self, index):
@@ -1098,7 +1068,6 @@ class LogViewerDialog(QDialog):
         try:
             content = read_log_file(log_file, max_lines=10000)
             self.log_text.setPlainText(content)
-            # Scroll to bottom to show latest logs
             self.log_text.verticalScrollBar().setValue(
                 self.log_text.verticalScrollBar().maximum()
             )
@@ -1112,7 +1081,6 @@ class LogViewerDialog(QDialog):
             QMessageBox.warning(self, 'No Log File', 'No log file selected.')
             return
         
-        # Open file dialog for export location
         export_path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
             'Export Logs',
@@ -1147,9 +1115,9 @@ class LogViewerDialog(QDialog):
         try:
             if platform.system() == 'Windows':
                 os.startfile(LOG_DIR)
-            elif platform.system() == 'Darwin':  # macOS
+            elif platform.system() == 'Darwin':
                 subprocess.Popen(['open', LOG_DIR])
-            else:  # Linux
+            else:
                 subprocess.Popen(['xdg-open', LOG_DIR])
             logger.info('Opened logs folder in file explorer')
         except Exception as e:

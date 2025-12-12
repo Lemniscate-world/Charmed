@@ -12,16 +12,18 @@ Features:
 - Remove individual alarms
 - Set volume before playing
 - Thread-safe alarm list management
+- Retry logic with exponential backoff for Spotify API failures
+- System tray notifications for alarm trigger status
 
 Dependencies:
 - schedule: Job scheduling library
 - threading: Background execution and synchronization
 """
 
-import schedule  # Job scheduling library
-import time      # Time-related functions (sleep)
-import threading  # Background thread execution
-import re        # Regular expressions for time validation
+import schedule
+import time
+import threading
+import re
 from logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -37,55 +39,23 @@ class Alarm:
     Attributes:
         alarms: List of alarm info dictionaries with time, playlist, volume.
         scheduler_running: Boolean flag indicating if scheduler thread is active.
-        alarm_failure_callback: Optional callback function for alarm failures.
+        gui_app: Reference to GUI application for showing notifications.
     """
 
-    def __init__(self, alarm_failure_callback=None):
+    def __init__(self, gui_app=None):
         """
         Initialize the alarm manager with empty alarm list.
-        
+
         Args:
-            alarm_failure_callback: Optional function to call when alarm fails.
-                Should accept (time_str, playlist, error_message) arguments.
+            gui_app: Reference to GUI application for showing notifications (optional).
         """
         logger.info('Initializing Alarm manager')
-        # List to store alarm metadata for UI display
-        # Each entry: {'time': 'HH:MM', 'playlist': 'name', 'playlist_uri': 'uri', 'volume': 80, 'job': schedule.Job}
         self.alarms = []
-
-        # Flag to track if scheduler thread is running
         self.scheduler_running = False
-
-        # Reference to scheduler thread
         self.scheduler_thread = None
-        
-        # Callback for alarm failures
-        self.alarm_failure_callback = alarm_failure_callback
-
-        # Thread safety: Lock for protecting alarm list modifications
         self._alarms_lock = threading.Lock()
-        
+        self.gui_app = gui_app
         logger.info("Alarm manager initialized")
-
-    def validate_time_format(self, time_str):
-        """
-        Validate alarm time format.
-        
-        Args:
-            time_str: Time string to validate.
-            
-        Returns:
-            tuple: (is_valid: bool, error_message: str or None)
-        """
-        if not time_str or not isinstance(time_str, str):
-            return False, "Time cannot be empty"
-        
-        # Check HH:MM format
-        pattern = r'^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$'
-        if not re.match(pattern, time_str):
-            return False, "Invalid time format. Please use HH:MM format (e.g., 09:30 or 14:45)"
-        
-        return True, None
 
     def set_alarm(self, time_str, playlist_name, playlist_uri, spotify_api, volume=80):
         """
@@ -100,7 +70,7 @@ class Alarm:
             playlist_uri: Spotify URI of the playlist to play.
             spotify_api: SpotifyAPI instance for playback control.
             volume: Volume level 0-100 (default 80).
-            
+
         Raises:
             ValueError: If time format is invalid.
         """
@@ -108,44 +78,57 @@ class Alarm:
             f"Scheduling alarm - Time: {time_str}, Playlist: {playlist_name}, "
             f"URI: {playlist_uri}, Volume: {volume}%"
         )
-        
-        # Validate time format
-        is_valid, error_msg = self.validate_time_format(time_str)
-        if not is_valid:
-            logger.error(f"Invalid time format for alarm: {time_str} - {error_msg}")
+
+        if not self._validate_time_format(time_str):
+            error_msg = f'Invalid time format: {time_str}. Expected HH:MM (24-hour format).'
+            logger.error(f"Invalid time format for alarm: {time_str}")
             raise ValueError(error_msg)
-        
-        # Create the scheduled job - runs daily at specified time
-        # The job calls play_playlist with playlist URI, API, and volume
+
         job = schedule.every().day.at(time_str).do(
-            self.play_playlist,      # Function to call
-            playlist_name,           # Playlist name for display
-            playlist_uri,            # Playlist URI argument
-            spotify_api,             # API instance argument
-            volume,                  # Volume argument
-            time_str                 # Time string for error reporting
+            self.play_playlist,
+            playlist_uri,
+            spotify_api,
+            volume,
+            playlist_name
         )
 
-        # Store alarm info for management UI (thread-safe)
         alarm_info = {
-            'time': time_str,        # Alarm time
-            'playlist': playlist_name,  # Playlist name for display
-            'playlist_uri': playlist_uri,  # Playlist URI for playback
-            'volume': volume,        # Volume setting
-            'job': job               # Reference to schedule.Job for removal
+            'time': time_str,
+            'playlist': playlist_name,
+            'playlist_uri': playlist_uri,
+            'volume': volume,
+            'job': job
         }
         
         with self._alarms_lock:
             self.alarms.append(alarm_info)
             logger.info(f"Alarm successfully scheduled for {time_str}. Total alarms: {len(self.alarms)}")
 
-        # Start scheduler thread if not already running
         self._ensure_scheduler_running()
+
+    def _validate_time_format(self, time_str):
+        """
+        Validate time string format.
+
+        Args:
+            time_str: Time string to validate.
+
+        Returns:
+            bool: True if valid HH:MM format in 24-hour time.
+        """
+        if not re.match(r'^([0-1][0-9]|2[0-3]):[0-5][0-9]$', time_str):
+            return False
+
+        try:
+            hours, minutes = map(int, time_str.split(':'))
+            return 0 <= hours <= 23 and 0 <= minutes <= 59
+        except (ValueError, AttributeError):
+            return False
 
     def _ensure_scheduler_running(self):
         """Start the scheduler background thread if not already running."""
         if self.scheduler_running:
-            return  # Already running
+            return
 
         def run_scheduler():
             """
@@ -156,15 +139,12 @@ class Alarm:
             """
             logger.info("Scheduler thread started")
             while self.scheduler_running:
-                schedule.run_pending()  # Execute any due jobs
-                time.sleep(1)           # Wait 1 second
+                schedule.run_pending()
+                time.sleep(1)
             logger.info("Scheduler thread stopped")
 
-        # Mark scheduler as running
         self.scheduler_running = True
 
-        # Create and start daemon thread
-        # Daemon=True ensures thread stops when main program exits
         self.scheduler_thread = threading.Thread(
             target=run_scheduler,
             daemon=True,
@@ -173,41 +153,141 @@ class Alarm:
         self.scheduler_thread.start()
         logger.info("Alarm scheduler background thread initialized")
 
-    def play_playlist(self, playlist_name, playlist_uri, spotify_api, volume=80, time_str=None):
+    def play_playlist(self, playlist_uri, spotify_api, volume=80, playlist_name='Playlist'):
         """
         Play a playlist - called by scheduler when alarm triggers.
 
-        Sets the volume first, then starts playlist playback.
+        Sets the volume first, then starts playlist playback with retry logic.
 
         Args:
-            playlist_name: Name of the playlist (for logging/errors).
             playlist_uri: Spotify URI of playlist to play.
             spotify_api: SpotifyAPI instance for control.
             volume: Volume level 0-100.
-            time_str: Time string for error reporting (optional).
+            playlist_name: Name of playlist for notifications.
         """
         logger.info(f"Alarm triggered - Playing playlist: {playlist_name} ({playlist_uri}) at volume {volume}%")
-        
-        try:
-            # Set volume before playing
-            spotify_api.set_volume(volume)
-            logger.info(f"Volume set to {volume}%")
-        except Exception as e:
-            # Volume control may fail if no active device
-            # Continue anyway - playback might wake the device
-            logger.warning(f"Failed to set volume: {e}. Continuing with playback attempt.")
 
-        try:
-            # Start playlist playback by URI
-            spotify_api.play_playlist_by_uri(playlist_uri)
-            logger.info(f"Successfully started playlist playback: {playlist_name}")
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Alarm playback failed for playlist {playlist_name}: {e}", exc_info=True)
-            
-            # Call failure callback if provided
-            if self.alarm_failure_callback and time_str:
-                self.alarm_failure_callback(time_str, playlist_name, error_msg)
+        max_retries = 3
+        base_delay = 2
+
+        for attempt in range(max_retries):
+            try:
+                self._set_volume_with_retry(spotify_api, volume, max_retries=2)
+
+                spotify_api.play_playlist_by_uri(playlist_uri)
+
+                success_msg = f'Alarm triggered successfully!\nPlaying: {playlist_name}'
+                self._show_notification('Alarm Success', success_msg, success=True)
+                logger.info(f"Successfully started playlist playback: {playlist_name}")
+                return
+
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"Alarm playback attempt {attempt + 1}/{max_retries} failed for playlist {playlist_name}: {e}", exc_info=True)
+                
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    logger.info(f"Retrying in {delay} seconds...")
+                    time.sleep(delay)
+                else:
+                    failure_msg = self._get_user_friendly_error(error_msg, playlist_name)
+                    self._show_notification('Alarm Failed', failure_msg, success=False)
+                    logger.error(f"Alarm failed after {max_retries} attempts: {failure_msg}")
+
+    def _set_volume_with_retry(self, spotify_api, volume, max_retries=2):
+        """
+        Set volume with retry logic.
+
+        Args:
+            spotify_api: SpotifyAPI instance.
+            volume: Volume level 0-100.
+            max_retries: Maximum number of retry attempts.
+        """
+        for attempt in range(max_retries):
+            try:
+                spotify_api.set_volume(volume)
+                logger.info(f"Volume set to {volume}%")
+                return
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Failed to set volume (attempt {attempt + 1}/{max_retries}): {e}. Retrying...")
+                    time.sleep(1)
+                else:
+                    logger.warning(f"Failed to set volume after {max_retries} attempts: {e}. Continuing with playback attempt.")
+                    pass
+
+    def _get_user_friendly_error(self, error_msg, playlist_name):
+        """
+        Convert technical error message to user-friendly guidance.
+
+        Args:
+            error_msg: Original error message.
+            playlist_name: Name of playlist that failed to play.
+
+        Returns:
+            str: User-friendly error message with actionable guidance.
+        """
+        error_lower = error_msg.lower()
+
+        if 'no active device' in error_lower or 'device' in error_lower:
+            return (
+                f'Failed to play "{playlist_name}"\n\n'
+                '⚠ No active Spotify device found.\n'
+                'Open Spotify on any device and start playing something, then try again.'
+            )
+        elif 'authentication' in error_lower or 'token' in error_lower or 'unauthorized' in error_lower:
+            return (
+                f'Failed to play "{playlist_name}"\n\n'
+                '⚠ Authentication expired.\n'
+                'Please log in to Spotify again in the Alarmify app.'
+            )
+        elif 'premium' in error_lower or 'restriction' in error_lower:
+            return (
+                f'Failed to play "{playlist_name}"\n\n'
+                '⚠ Spotify Premium required.\n'
+                'Playback control requires a Spotify Premium account.'
+            )
+        elif 'rate' in error_lower or 'limit' in error_lower or '429' in error_msg:
+            return (
+                f'Failed to play "{playlist_name}"\n\n'
+                '⚠ Rate limit exceeded.\n'
+                'Too many requests to Spotify. Wait a few minutes and try again.'
+            )
+        elif 'network' in error_lower or 'connection' in error_lower or 'timeout' in error_lower:
+            return (
+                f'Failed to play "{playlist_name}"\n\n'
+                '⚠ Network error.\n'
+                'Check your internet connection and try again.'
+            )
+        elif 'not found' in error_lower or '404' in error_msg:
+            return (
+                f'Failed to play "{playlist_name}"\n\n'
+                '⚠ Playlist not found.\n'
+                'The playlist may have been deleted or made private.'
+            )
+        else:
+            return (
+                f'Failed to play "{playlist_name}"\n\n'
+                f'⚠ Error: {error_msg}\n\n'
+                'Check your Spotify connection and device status.'
+            )
+
+    def _show_notification(self, title, message, success=True):
+        """
+        Show system tray notification.
+
+        Args:
+            title: Notification title.
+            message: Notification message.
+            success: Whether this is a success (True) or failure (False) notification.
+        """
+        if self.gui_app and hasattr(self.gui_app, 'show_tray_notification'):
+            try:
+                from PyQt5.QtWidgets import QSystemTrayIcon
+                icon_type = QSystemTrayIcon.Information if success else QSystemTrayIcon.Critical
+                self.gui_app.show_tray_notification(title, message, icon_type)
+            except Exception as e:
+                logger.warning(f"Failed to show tray notification: {e}")
 
     def get_alarms(self):
         """
@@ -220,7 +300,6 @@ class Alarm:
                 - playlist_uri: Playlist URI
                 - volume: Volume percentage
         """
-        # Return copy without 'job' key (internal implementation detail, thread-safe)
         with self._alarms_lock:
             alarm_list = [
                 {
@@ -244,19 +323,16 @@ class Alarm:
             time_str: Time of alarm to remove (HH:MM format).
         """
         logger.info(f"Removing alarm scheduled for {time_str}")
-        # Find and remove matching alarms (thread-safe)
         with self._alarms_lock:
-            for alarm in self.alarms[:]:  # Iterate copy to allow removal
+            for alarm in self.alarms[:]:
                 if alarm['time'] == time_str:
-                    # Cancel the scheduled job
                     schedule.cancel_job(alarm['job'])
-                    # Remove from our list
                     self.alarms.remove(alarm)
                     logger.info(
                         f"Alarm removed - Time: {time_str}, Playlist: {alarm['playlist']}. "
                         f"Remaining alarms: {len(self.alarms)}"
                     )
-                    break  # Remove first match only
+                    break
             else:
                 logger.warning(f"Attempted to remove non-existent alarm at {time_str}")
 
