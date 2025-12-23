@@ -175,8 +175,9 @@ class SpotifyAPI:
             webbrowser.open(auth_url)
 
         # Parse redirect URI to get host and port for callback server
+        # Spotify requires 127.0.0.1 instead of localhost for security
         parsed = urlparse(self.auth_manager.redirect_uri)
-        host = parsed.hostname or 'localhost'
+        host = parsed.hostname or '127.0.0.1'
         port = parsed.port or 8888
 
         # Define request handler for OAuth callback

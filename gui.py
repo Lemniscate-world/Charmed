@@ -1198,8 +1198,9 @@ class SettingsDialog(QDialog):
         self.client_secret.setEchoMode(QLineEdit.Password)  # Hide secret
 
         # Redirect URI input (pre-filled, user rarely needs to change)
+        # Note: Spotify requires 127.0.0.1 instead of localhost for security
         self.redirect_uri = QLineEdit(self)
-        self.redirect_uri.setText('http://localhost:8888/callback')
+        self.redirect_uri.setText('http://127.0.0.1:8888/callback')
         self.redirect_uri.setStyleSheet("color: #888;")
 
         load_dotenv()
@@ -1217,9 +1218,11 @@ class SettingsDialog(QDialog):
         layout.addLayout(form_layout)
         # Help note about redirect URI
         uri_note = QLabel(
-            "Note: Add this exact Redirect URI in your Spotify app settings."
+            "Note: Add this exact Redirect URI in your Spotify app settings.\n"
+            "Spotify requires 127.0.0.1 (not localhost) for security."
         )
         uri_note.setStyleSheet("color: #888; font-size: 11px;")
+        uri_note.setWordWrap(True)
         layout.addWidget(uri_note)
 
         # Buttons row
@@ -1251,7 +1254,8 @@ class SettingsDialog(QDialog):
             "3. Enter any name (e.g., 'Alarmify')\n"
             "4. Enter any description\n"
             "5. Set Redirect URI to:\n"
-            "   http://localhost:8888/callback\n"
+            "   http://127.0.0.1:8888/callback\n"
+            "   (Important: Use 127.0.0.1, not localhost)\n"
             "6. Check 'Web API'\n"
             "7. Click 'Save'\n"
             "8. Copy Client ID and Client Secret\n"
