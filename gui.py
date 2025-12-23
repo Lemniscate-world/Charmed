@@ -496,6 +496,18 @@ class AlarmApp(QtWidgets.QMainWindow):
         if reason == QSystemTrayIcon.DoubleClick:
             self._show_window()
 
+    def show_tray_notification(self, title, message, icon_type=QSystemTrayIcon.Information):
+        """
+        Show a system tray notification.
+        
+        Args:
+            title: Notification title.
+            message: Notification message.
+            icon_type: QSystemTrayIcon icon type (Information, Warning, Critical).
+        """
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            self.tray_icon.showMessage(title, message, icon_type, 5000)
+
     def _show_window(self):
         """Show and activate the main window."""
         self.show()
@@ -1105,7 +1117,7 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
-<<<<<<< Updated upstream
+        # Theme selection
         theme_label = QLabel('Theme')
         theme_label.setFont(QFont('Arial', 12, QFont.Bold))
         layout.addWidget(theme_label)
@@ -1135,11 +1147,6 @@ class SettingsDialog(QDialog):
         separator.setFrameShadow(QFrame.Sunken)
         layout.addWidget(separator)
 
-
-
-        form_layout = QFormLayout()
-=======
->>>>>>> Stashed changes
         # Instructions label at the top
         instructions = QLabel(
             "To use Alarmify, you need Spotify API credentials.\n"
@@ -1159,10 +1166,10 @@ class SettingsDialog(QDialog):
         layout.addWidget(btn_get_creds)
 
         # Separator
-        separator = QLabel("— Then paste your credentials below —")
-        separator.setAlignment(Qt.AlignCenter)
-        separator.setStyleSheet("color: #666; margin: 10px 0;")
-        layout.addWidget(separator)
+        separator2 = QLabel("— Then paste your credentials below —")
+        separator2.setAlignment(Qt.AlignCenter)
+        separator2.setStyleSheet("color: #666; margin: 10px 0;")
+        layout.addWidget(separator2)
 
         # Form layout for inputs
         form_layout = QFormLayout()
@@ -1192,18 +1199,8 @@ class SettingsDialog(QDialog):
         form_layout.addRow('Client ID:', self.client_id)
         form_layout.addRow('Client Secret:', self.client_secret)
         form_layout.addRow('Redirect URI:', self.redirect_uri)
-        # Add rows to form
-        form_layout.addRow('Client ID:', self.client_id)
-        form_layout.addRow('Client Secret:', self.client_secret)
-        form_layout.addRow('Redirect URI:', self.redirect_uri)
 
         layout.addLayout(form_layout)
-
-<<<<<<< Updated upstream
-        layout.addLayout(form_layout)
-
-=======
->>>>>>> Stashed changes
         # Help note about redirect URI
         uri_note = QLabel(
             "Note: Add this exact Redirect URI in your Spotify app settings."

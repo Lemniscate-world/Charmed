@@ -895,6 +895,31 @@ class ThreadSafeSpotifyAPI:
         with self._lock:
             return self._api.get_active_device()
     
+    def get_devices(self):
+        """
+        Thread-safe retrieval of all available Spotify playback devices.
+        
+        Returns:
+            list[dict]: List of device dictionaries with 'id', 'name', 'type', 'is_active', etc.
+                        Returns empty list if not authenticated or error occurs.
+        """
+        with self._lock:
+            return self._api.get_devices()
+    
+    def transfer_playback(self, device_id, force_play=False):
+        """
+        Thread-safe transfer of playback to a specific device.
+        
+        Args:
+            device_id: Spotify device ID to transfer to.
+            force_play: If True, start playback on the device immediately.
+            
+        Raises:
+            RuntimeError: If not authenticated or device not found.
+        """
+        with self._lock:
+            return self._api.transfer_playback(device_id, force_play)
+    
     @property
     def sp(self):
         """
