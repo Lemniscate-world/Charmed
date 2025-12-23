@@ -104,7 +104,7 @@ A PyQt5-based desktop application that wakes you up with your favorite Spotify p
 
 - **[User Guide](docs/USER_GUIDE.md)** - Comprehensive step-by-step guide with screenshots
 - **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute to Alarmify
-- **[Development Setup](CONTRIBUTING.md#development-setup)** - Setting up development environment
+- **[Planning & Strategy](docs/PLANNING.md)** - Product roadmap, features, design system
 - **[Architecture Overview](AGENTS.md)** - Technical details for developers
 
 ## Troubleshooting

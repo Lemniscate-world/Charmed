@@ -159,6 +159,7 @@ class Alarm:
         Play a playlist - called by scheduler when alarm triggers.
 
         Sets the volume first, then starts playlist playback with retry logic.
+        Auto-wakes Spotify device before playing.
 
         Args:
             playlist_uri: Spotify URI of playlist to play.
@@ -167,6 +168,12 @@ class Alarm:
             playlist_name: Name of playlist for notifications.
         """
         logger.info(f"Alarm triggered - Playing playlist: {playlist_name} ({playlist_uri}) at volume {volume}%")
+
+        # Auto-wake Spotify device before alarm
+        try:
+            self._wake_spotify_device(spotify_api)
+        except Exception as e:
+            logger.warning(f"Failed to wake Spotify device: {e}")
 
         max_retries = 3
         base_delay = 2
@@ -194,6 +201,45 @@ class Alarm:
                     failure_msg = self._get_user_friendly_error(error_msg, playlist_name)
                     self._show_notification('Alarm Failed', failure_msg, success=False)
                     logger.error(f"Alarm failed after {max_retries} attempts: {failure_msg}")
+
+    def _wake_spotify_device(self, spotify_api):
+        """
+        Wake Spotify device before alarm triggers.
+        
+        Attempts to activate a device if none is active.
+        
+        Args:
+            spotify_api: SpotifyAPI instance.
+        """
+        try:
+            # Check for active device
+            active_device = spotify_api.get_active_device()
+            if active_device:
+                logger.debug("Spotify device already active")
+                return
+            
+            # Try to get available devices and activate one
+            devices = spotify_api.get_devices()
+            if devices:
+                # Prefer computer/desktop devices
+                for device in devices:
+                    device_type = device.get('type', '').lower()
+                    if device_type in ['computer', 'desktop']:
+                        device_id = device.get('id')
+                        if device_id:
+                            spotify_api.transfer_playback(device_id, force_play=False)
+                            logger.info(f"Woke up Spotify device: {device.get('name')}")
+                            return
+                
+                # Fallback to first available device
+                first_device = devices[0]
+                device_id = first_device.get('id')
+                if device_id:
+                    spotify_api.transfer_playback(device_id, force_play=False)
+                    logger.info(f"Woke up Spotify device: {first_device.get('name')}")
+        except Exception as e:
+            logger.warning(f"Could not wake Spotify device: {e}")
+            # Don't raise - this is best effort
 
     def _set_volume_with_retry(self, spotify_api, volume, max_retries=2):
         """
@@ -230,10 +276,18 @@ class Alarm:
         """
         error_lower = error_msg.lower()
 
-        if 'no active device' in error_lower or 'device' in error_lower:
+        if 'premium' in error_lower or 'premium_required' in error_lower:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                'ÔÜá No active Spotify device found.\n'
+                '⚠️ Spotify Premium required.\n\n'
+                'Alarmify requires Spotify Premium for playback control.\n'
+                'Upgrade at: https://www.spotify.com/premium\n\n'
+                'Free users: Alarmify will show a notification instead.'
+            )
+        elif 'no active device' in error_lower or 'device' in error_lower:
+            return (
+                f'Failed to play "{playlist_name}"\n\n'
+                '⚠️ No active Spotify device found.\n'
                 'Open Spotify on any device and start playing something, then try again.'
             )
         elif 'authentication' in error_lower or 'token' in error_lower or 'unauthorized' in error_lower:

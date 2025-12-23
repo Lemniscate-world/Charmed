@@ -1,34 +1,41 @@
-/* Spotify-inspired stylesheet for Alarmify (Qt QSS) */
+/* Charm-inspired stylesheet for Alarmify (Qt QSS) */
 
 QMainWindow {
-    background: #121212;
+    background-color: #0a0a0a !important;
     color: #ffffff;
 }
 
 QWidget {
-    background: #121212;
+    background-color: #0a0a0a !important;
     color: #ffffff;
 }
 
-/* Logo */
-#appLogo {
-    color: #1DB954;
-    font-size: 28px;
-    font-weight: 700;
-    letter-spacing: -0.5px;
+QWidget#centralWidget {
+    background-color: #0a0a0a !important;
 }
 
-/* Labels */
+/* Logo - Charm style */
+#appLogo {
+    color: #1DB954;
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    font-family: 'Inter', 'SF Pro Display', -apple-system, sans-serif;
+}
+
+/* Labels - Charm style */
 QLabel {
     color: #b3b3b3;
+    font-family: 'Inter', 'SF Pro Text', -apple-system, sans-serif;
 }
 
 QLabel[objectName="sectionHeader"] {
     color: #ffffff;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 700;
     margin-top: 8px;
     margin-bottom: 4px;
+    font-family: 'Inter', 'SF Pro Display', -apple-system, sans-serif;
 }
 
 /* Status Labels */
@@ -42,36 +49,39 @@ QLabel[objectName="sectionHeader"] {
     font-size: 11px;
 }
 
-/* Playlist List */
+/* Playlist List - Glassmorphism effect */
 QListWidget#playlistList {
-    background: #181818;
-    border: none;
-    border-radius: 8px;
+    background-color: #1a1a1a !important;
+    border: 2px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: 12px;
     color: #e6e6e6;
-    padding: 4px;
+    padding: 8px;
 }
 
 QListWidget::item {
     padding: 0px;
-    margin: 2px;
-    border-radius: 6px;
+    margin: 4px;
+    border-radius: 8px;
     background: transparent;
 }
 
 QListWidget::item:selected {
-    background: #2a2a2a;
-    color: #ffffff;
+    background-color: rgba(29, 185, 84, 0.3) !important;
+    color: #ffffff !important;
+    border-left: 4px solid #1DB954 !important;
+    border-radius: 8px;
 }
 
 QListWidget::item:hover {
-    background: #2a2a2a;
+    background-color: rgba(42, 42, 42, 0.9) !important;
+    border-radius: 8px;
 }
 
 QListWidget::item:selected:hover {
-    background: #333333;
+    background: rgba(51, 51, 51, 0.9);
 }
 
-/* Buttons */
+/* Buttons - Charm pill style */
 QPushButton {
     background: #1DB954;
     color: #000000;
@@ -81,11 +91,12 @@ QPushButton {
     font-weight: 700;
     font-size: 14px;
     min-height: 40px;
+    font-family: 'Inter', 'SF Pro Text', -apple-system, sans-serif;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 QPushButton:hover {
     background: #1ed760;
-    transform: scale(1.05);
 }
 
 QPushButton:pressed {
@@ -131,39 +142,43 @@ QPushButton[objectName="refreshButton"]:hover {
     color: #ffffff;
 }
 
-/* Time Input */
+/* Time Input - Glassmorphism */
 QTimeEdit#timeInput {
-    background: #181818;
-    color: #ffffff;
-    border: 1px solid #2a2a2a;
-    border-radius: 6px;
-    padding: 12px;
-    font-size: 24px;
+    background-color: #1a1a1a !important;
+    color: #ffffff !important;
+    border: 2px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: 12px;
+    padding: 16px;
+    font-size: 32px !important;
     font-weight: 600;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
 QTimeEdit#timeInput:focus {
-    border: 2px solid #1DB954;
-    background: #1f1f1f;
+    border: 2px solid #1DB954 !important;
+    background-color: #1f1f1f !important;
 }
 
 QTimeEdit#timeInput:hover {
     border: 1px solid #3a3a3a;
 }
 
-/* Line Edit / Search */
+/* Line Edit / Search - Glassmorphism */
 QLineEdit {
-    background: #2a2a2a;
+    background: rgba(42, 42, 42, 0.6);
+    backdrop-filter: blur(10px);
     color: #ffffff;
-    border: 1px solid #3a3a3a;
-    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
     padding: 10px 14px;
     font-size: 14px;
+    font-family: 'Inter', 'SF Pro Text', -apple-system, sans-serif;
 }
 
 QLineEdit:focus {
     border: 2px solid #1DB954;
-    background: #333333;
+    background: rgba(51, 51, 51, 0.8);
+    box-shadow: 0 0 0 3px rgba(29, 185, 84, 0.1);
 }
 
 QLineEdit#playlistSearch {
@@ -177,7 +192,8 @@ QLineEdit#playlistSearch {
 
 QLineEdit#playlistSearch:focus {
     border: 2px solid #1DB954;
-    background: #333333;
+    background: rgba(51, 51, 51, 0.8);
+    box-shadow: 0 0 0 3px rgba(29, 185, 84, 0.1);
 }
 
 QLineEdit::placeholder {

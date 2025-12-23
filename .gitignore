@@ -37,7 +37,9 @@ Thumbs.db
 # Logs - Log directory created by logging_config
 logs/
 *.log
-logs/
+
+# Test mode flag (optional, can be committed if needed)
+# .test_mode
 
 # Build outputs (Inno Setup)
 Output/

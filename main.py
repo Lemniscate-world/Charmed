@@ -1,9 +1,11 @@
 from PyQt5 import QtWidgets
 from gui import AlarmApp, CrashReportDialog
 from logging_config import setup_logging, get_logger
+from pathlib import Path
 import sys
 import logging
 import traceback
+import os
 
 
 def exception_hook(exc_type, exc_value, exc_traceback):
@@ -32,6 +34,32 @@ def exception_hook(exc_type, exc_value, exc_traceback):
 
 logger = get_logger(__name__)
 
+
+def is_first_run():
+    """
+    Check if this is the first time running Alarmify.
+    
+    Returns:
+        bool: True if first run, False otherwise
+    """
+    # Check if .env file exists and has credentials
+    env_path = Path(__file__).parent / '.env'
+    if not env_path.exists():
+        return True
+    
+    # Check if credentials are set
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    client_id = os.getenv('SPOTIPY_CLIENT_ID')
+    client_secret = os.getenv('SPOTIPY_CLIENT_SECRET')
+    
+    if not client_id or not client_secret:
+        return True
+    
+    return False
+
+
 def main():
     setup_logging()
     logger.info('Starting Alarmify application')
@@ -41,6 +69,19 @@ def main():
     try:
         app = QtWidgets.QApplication(sys.argv)
         app.setQuitOnLastWindowClosed(False)
+        
+        # Check if first run and show wizard
+        if is_first_run():
+            logger.info('First run detected - showing setup wizard')
+            from gui_setup_wizard import SetupWizard
+            wizard = SetupWizard()
+            if wizard.exec_() == QtWidgets.QDialog.Accepted:
+                logger.info('Setup wizard completed successfully')
+            else:
+                logger.info('Setup wizard cancelled')
+                # Still show main window, user can configure later
+                pass
+        
         window = AlarmApp()
         window.show()
         logger.info('Main window displayed')

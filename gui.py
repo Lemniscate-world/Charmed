@@ -162,7 +162,7 @@ class PlaylistItemWidget(QWidget):
         text_layout.setSpacing(2)
 
         self.name_label = QLabel(playlist_data.get('name', 'Unknown'))
-        self.name_label.setFont(QFont('Segoe UI', 14, QFont.Bold))
+        self.name_label.setFont(QFont('Inter', 14, QFont.Bold))
         self.name_label.setStyleSheet("color: #FFFFFF;")
         text_layout.addWidget(self.name_label)
 
@@ -170,7 +170,7 @@ class PlaylistItemWidget(QWidget):
         owner = playlist_data.get('owner', 'Unknown')
         info_text = f"{track_count} tracks • {owner}"
         self.info_label = QLabel(info_text)
-        self.info_label.setFont(QFont('Segoe UI', 12))
+        self.info_label.setFont(QFont('Inter', 12))
         self.info_label.setStyleSheet("color: #b3b3b3;")
         text_layout.addWidget(self.info_label)
 
@@ -255,19 +255,30 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.current_theme = 'dark'
         self.last_sync_time = None
         
+        # Apply modern styling immediately
+        self._apply_modern_ui()
+        
         self._build_ui()
         self._apply_theme()
 
-        try:
-            self.spotify_api = ThreadSafeSpotifyAPI()
-        except RuntimeError as e:
-            logger.warning('Spotify credentials not configured')
-            QMessageBox.warning(
-                self,
-                'Spotify Credentials Required',
-                f'{e}\n\nPlease click the Settings button (⚙) to configure your Spotify API credentials.'
-            )
-            self.spotify_api = None
+        # Check for test mode
+        test_mode = os.getenv('ALARMIFY_TEST_MODE', 'False').lower() == 'true'
+        
+        if test_mode:
+            logger.info('TEST MODE: Using Mock Spotify API')
+            from spotify_api.mock_spotify import MockThreadSafeSpotifyAPI
+            self.spotify_api = MockThreadSafeSpotifyAPI()
+        else:
+            try:
+                self.spotify_api = ThreadSafeSpotifyAPI()
+            except RuntimeError as e:
+                logger.warning('Spotify credentials not configured')
+                QMessageBox.warning(
+                    self,
+                    'Spotify Credentials Required',
+                    f'{e}\n\nPlease click the Settings button (⚙) to configure your Spotify API credentials.'
+                )
+                self.spotify_api = None
 
         self.alarm = Alarm(self)
 
@@ -303,7 +314,12 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.setMinimumSize(1000, 700)
 
         self.central_widget = QWidget()
+        self.central_widget.setObjectName('centralWidget')
+        # Force VERY dark background - impossible to miss
+        self.central_widget.setStyleSheet("background-color: #000000 !important;")
         self.setCentralWidget(self.central_widget)
+        # Also set main window background
+        self.setStyleSheet("QMainWindow { background-color: #000000 !important; }")
 
         root_layout = QVBoxLayout(self.central_widget)
         root_layout.setContentsMargins(24, 24, 24, 24)
@@ -315,7 +331,7 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         logo = QLabel('Alarmify')
         logo.setObjectName('appLogo')
-        logo.setFont(QFont('Segoe UI', 32, QFont.Bold))
+        logo.setFont(QFont('Inter', 32, QFont.Bold))
         header.addWidget(logo)
 
         header.addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
@@ -350,20 +366,58 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         playlist_header = QLabel('Your Playlists')
         playlist_header.setObjectName('sectionHeader')
-        playlist_header.setFont(QFont('Segoe UI', 18, QFont.Bold))
+        playlist_header.setFont(QFont('Inter', 18, QFont.Bold))
         left_panel.addWidget(playlist_header)
 
         self.playlist_search = QLineEdit()
         self.playlist_search.setPlaceholderText('Search playlists...')
         self.playlist_search.setObjectName('playlistSearch')
-        self.playlist_search.setMinimumHeight(40)
+        self.playlist_search.setMinimumHeight(44)
+        self.playlist_search.setStyleSheet("""
+            QLineEdit#playlistSearch {
+                background: rgba(42, 42, 42, 0.7);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                padding: 12px 16px;
+                color: #ffffff;
+                font-size: 14px;
+            }
+            QLineEdit#playlistSearch:focus {
+                border: 2px solid #1DB954;
+                background: rgba(51, 51, 51, 0.8);
+            }
+        """)
         left_panel.addWidget(self.playlist_search)
 
         self.playlist_list = QListWidget()
         self.playlist_list.setObjectName('playlistList')
         self.playlist_list.setMinimumWidth(400)
-        self.playlist_list.setSpacing(4)
+        self.playlist_list.setSpacing(6)
         self.playlist_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        # Apply dark styling directly
+        self.playlist_list.setStyleSheet("""
+            QListWidget {
+                background-color: #1a1a1a !important;
+                border: 2px solid rgba(255, 255, 255, 0.3) !important;
+                border-radius: 12px;
+                padding: 8px;
+                color: #ffffff !important;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-radius: 8px;
+                margin: 2px;
+                color: #ffffff !important;
+                background-color: transparent;
+            }
+            QListWidget::item:hover {
+                background-color: rgba(42, 42, 42, 0.9) !important;
+            }
+            QListWidget::item:selected {
+                background-color: rgba(29, 185, 84, 0.3) !important;
+                border-left: 4px solid #1DB954 !important;
+            }
+        """)
         left_panel.addWidget(self.playlist_list)
 
         btn_layout = QHBoxLayout()
@@ -385,7 +439,7 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         device_label = QLabel('Playback Device')
         device_label.setObjectName('sectionHeader')
-        device_label.setFont(QFont('Segoe UI', 18, QFont.Bold))
+        device_label.setFont(QFont('Inter', 18, QFont.Bold))
         right_panel.addWidget(device_label)
 
         device_row = QHBoxLayout()
@@ -405,13 +459,13 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         time_label = QLabel('Alarm Time')
         time_label.setObjectName('sectionHeader')
-        time_label.setFont(QFont('Segoe UI', 18, QFont.Bold))
+        time_label.setFont(QFont('Inter', 18, QFont.Bold))
         right_panel.addWidget(time_label)
 
         self.time_input = QTimeEdit(self)
         self.time_input.setDisplayFormat('HH:mm')
         self.time_input.setObjectName('timeInput')
-        self.time_input.setFont(QFont('Segoe UI', 28, QFont.Bold))
+        self.time_input.setFont(QFont('JetBrains Mono', 28, QFont.Bold))
         self.time_input.setMinimumHeight(60)
         right_panel.addWidget(self.time_input)
 
@@ -421,7 +475,7 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         volume_label = QLabel('Alarm Volume')
         volume_label.setObjectName('sectionHeader')
-        volume_label.setFont(QFont('Segoe UI', 18, QFont.Bold))
+        volume_label.setFont(QFont('Inter', 18, QFont.Bold))
         right_panel.addWidget(volume_label)
 
         volume_row = QHBoxLayout()
@@ -433,6 +487,29 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.volume_slider.setValue(80)
         self.volume_slider.setObjectName('volumeSlider')
         self.volume_slider.valueChanged.connect(self._on_volume_changed)
+        # Apply dark styling directly
+        self.volume_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                background: #3a3a3a !important;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #ffffff !important;
+                width: 18px;
+                height: 18px;
+                margin: -6px 0;
+                border-radius: 9px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #1DB954 !important;
+                width: 20px;
+                height: 20px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #1DB954 !important;
+            }
+        """)
         volume_row.addWidget(self.volume_slider)
 
         self.volume_value_label = QLabel('80%')
@@ -533,16 +610,111 @@ class AlarmApp(QtWidgets.QMainWindow):
         self._cleanup_resources()
         QtWidgets.QApplication.quit()
 
+    def _apply_modern_ui(self):
+        """Apply modern UI using QPalette - most reliable method"""
+        palette = QPalette()
+        # Dark background
+        palette.setColor(QPalette.Window, QColor(10, 10, 10))  # #0a0a0a
+        palette.setColor(QPalette.WindowText, QColor(255, 255, 255))
+        # Input backgrounds
+        palette.setColor(QPalette.Base, QColor(26, 26, 26))  # #1a1a1a
+        palette.setColor(QPalette.AlternateBase, QColor(42, 42, 42))
+        # Text
+        palette.setColor(QPalette.Text, QColor(255, 255, 255))
+        palette.setColor(QPalette.BrightText, QColor(29, 185, 84))
+        # Buttons
+        palette.setColor(QPalette.Button, QColor(29, 185, 84))
+        palette.setColor(QPalette.ButtonText, QColor(0, 0, 0))
+        # Highlights
+        palette.setColor(QPalette.Highlight, QColor(29, 185, 84))
+        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
+        self.setPalette(palette)
+        logger.info('Applied dark palette')
+    
     def _apply_theme(self):
         """Apply the current theme to the application."""
         if self.current_theme == 'dark':
-            style_path = Path(__file__).resolve().parent / 'spotify_style.qss'
-            if style_path.exists():
-                try:
-                    with open(style_path, 'r', encoding='utf-8') as f:
-                        self.setStyleSheet(f.read())
-                except Exception:
-                    pass
+            # Use inline stylesheet - more reliable than external file
+            dark_style = """
+            QMainWindow { background-color: #0a0a0a; }
+            QWidget { background-color: #0a0a0a; color: #ffffff; }
+            QPushButton {
+                background-color: #1DB954;
+                color: #000000;
+                border: none;
+                border-radius: 20px;
+                padding: 12px 32px;
+                font-weight: 700;
+                font-size: 14px;
+                min-height: 40px;
+            }
+            QPushButton:hover { background-color: #1ed760; }
+            QPushButton:pressed { background-color: #1aa34a; }
+            QLineEdit, QTimeEdit {
+                background-color: #1a1a1a;
+                color: #ffffff;
+                border: 2px solid rgba(255, 255, 255, 0.2);
+                border-radius: 8px;
+                padding: 12px;
+            }
+            QLineEdit:focus, QTimeEdit:focus {
+                border: 2px solid #1DB954;
+                background-color: #1f1f1f;
+            }
+            QListWidget {
+                background-color: #1a1a1a;
+                border: 2px solid rgba(255, 255, 255, 0.2);
+                border-radius: 12px;
+                padding: 8px;
+                color: #ffffff;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-radius: 8px;
+                margin: 2px;
+                color: #ffffff;
+            }
+            QListWidget::item:selected {
+                background-color: rgba(29, 185, 84, 0.3);
+                border-left: 4px solid #1DB954;
+            }
+            QListWidget::item:hover {
+                background-color: rgba(42, 42, 42, 0.9);
+            }
+            QComboBox {
+                background-color: #1a1a1a;
+                color: #ffffff;
+                border: 2px solid rgba(255, 255, 255, 0.2);
+                border-radius: 8px;
+                padding: 12px;
+            }
+            QComboBox:hover { border: 2px solid rgba(255, 255, 255, 0.3); }
+            QComboBox:focus { border: 2px solid #1DB954; }
+            QSlider::groove:horizontal {
+                background: #3a3a3a;
+                height: 6px;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #ffffff;
+                width: 18px;
+                height: 18px;
+                margin: -6px 0;
+                border-radius: 9px;
+            }
+            QSlider::handle:horizontal:hover { background: #1DB954; }
+            QSlider::sub-page:horizontal { background: #1DB954; }
+            QLabel { color: #b3b3b3; }
+            QLabel[objectName="sectionHeader"] {
+                color: #ffffff;
+                font-size: 18px;
+                font-weight: 700;
+            }
+            """
+            self.setStyleSheet(dark_style)
+            if hasattr(self, 'central_widget'):
+                self.central_widget.setStyleSheet(dark_style)
+            logger.info('Applied dark theme stylesheet')
         else:
             palette = QPalette()
             palette.setColor(QPalette.Window, QColor(240, 240, 240))
@@ -555,50 +727,149 @@ class AlarmApp(QtWidgets.QMainWindow):
             self.setPalette(palette)
             
             light_style = """
-            QMainWindow { background: #f0f0f0; }
-            QLabel { color: #333333; }
+            QMainWindow { background: #f5f5f5; }
+            QWidget { background: #f5f5f5; color: #1a1a1a; }
+            QLabel { color: #1a1a1a; }
+            QLabel[objectName="sectionHeader"] { color: #000000; font-weight: 700; }
             #appLogo { color: #1DB954; }
+            #authStatus { color: #555555; }
+            #deviceStatus { color: #666666; }
             QListWidget#playlistList { 
                 background: #ffffff; 
-                border: 1px solid #cccccc;
-                color: #333333;
+                border: 1px solid #d0d0d0;
+                color: #1a1a1a;
+            }
+            QListWidget::item {
+                color: #1a1a1a;
             }
             QListWidget::item:selected {
                 background: #1DB954;
                 color: #000000;
             }
+            QListWidget::item:hover {
+                background: #e8e8e8;
+            }
             QPushButton {
                 background: #1DB954;
                 color: #000000;
-                border-radius: 6px;
-                padding: 8px 12px;
-                font-weight: 600;
+                border: none;
+                border-radius: 500px;
+                padding: 12px 32px;
+                font-weight: 700;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background: #1ed760;
             }
             QPushButton:disabled {
-                background: #cccccc;
-                color: #777777;
+                background: #d0d0d0;
+                color: #888888;
             }
             QTimeEdit#timeInput {
                 background: #ffffff;
-                color: #333333;
-                border: 1px solid #cccccc;
-                padding: 6px;
+                color: #1a1a1a;
+                border: 2px solid #d0d0d0;
+                border-radius: 6px;
+                padding: 12px;
+                font-weight: 600;
+            }
+            QTimeEdit#timeInput:focus {
+                border: 2px solid #1DB954;
             }
             QLineEdit {
                 background: #ffffff;
-                color: #333333;
-                border: 1px solid #cccccc;
-                padding: 6px;
+                color: #1a1a1a;
+                border: 2px solid #d0d0d0;
+                border-radius: 6px;
+                padding: 10px 14px;
+            }
+            QLineEdit:focus {
+                border: 2px solid #1DB954;
+            }
+            QLineEdit::placeholder {
+                color: #999999;
             }
             QComboBox {
                 background: #ffffff;
-                color: #333333;
-                border: 1px solid #cccccc;
-                padding: 6px;
+                color: #1a1a1a;
+                border: 2px solid #d0d0d0;
+                border-radius: 6px;
+                padding: 10px 14px;
+            }
+            QComboBox:hover {
+                border: 2px solid #1DB954;
+            }
+            QComboBox:focus {
+                border: 2px solid #1DB954;
+            }
+            QComboBox QAbstractItemView {
+                background: #ffffff;
+                color: #1a1a1a;
+                border: 1px solid #d0d0d0;
+                selection-background-color: #1DB954;
+                selection-color: #000000;
             }
             QStatusBar {
-                background: #e0e0e0;
-                color: #333333;
+                background: #e8e8e8;
+                color: #1a1a1a;
+                border-top: 1px solid #d0d0d0;
+            }
+            QStatusBar QLabel {
+                color: #555555;
+            }
+            QCheckBox {
+                color: #1a1a1a;
+                spacing: 10px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 2px solid #888888;
+                border-radius: 9px;
+                background: #ffffff;
+            }
+            QCheckBox::indicator:checked {
+                background: #1DB954;
+                border: 2px solid #1DB954;
+            }
+            QCheckBox::indicator:hover {
+                border: 2px solid #1DB954;
+            }
+            QRadioButton {
+                color: #1a1a1a;
+                spacing: 10px;
+            }
+            QRadioButton::indicator {
+                width: 18px;
+                height: 18px;
+                border: 2px solid #888888;
+                border-radius: 9px;
+                background: #ffffff;
+            }
+            QRadioButton::indicator:checked {
+                background: #1DB954;
+                border: 2px solid #1DB954;
+            }
+            QRadioButton::indicator:hover {
+                border: 2px solid #1DB954;
+            }
+            QSlider::groove:horizontal {
+                background: #d0d0d0;
+                height: 4px;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #1a1a1a;
+                width: 14px;
+                height: 14px;
+                margin: -5px 0;
+                border-radius: 7px;
+            }
+            QSlider::handle:horizontal:hover {
+                background: #1DB954;
+            }
+            QSlider::sub-page:horizontal {
+                background: #1DB954;
             }
             """
             self.setStyleSheet(light_style)
@@ -644,9 +915,16 @@ class AlarmApp(QtWidgets.QMainWindow):
         """Update the authentication status display."""
         if self.spotify_api and self.spotify_api.is_authenticated():
             user = self.spotify_api.get_current_user()
+            is_premium = self.spotify_api.is_premium_user()
+            
             if user:
                 name = user.get('display_name', 'User')
-                self.auth_status_label.setText(f'Connected as {name}')
+                status_text = f'Connected as {name}'
+                if is_premium:
+                    status_text += ' ✓ Premium'
+                elif is_premium is False:
+                    status_text += ' (Free)'
+                self.auth_status_label.setText(status_text)
                 self.auth_status_label.setStyleSheet("color: #1DB954;")
                 self.connection_status_label.setText('Connected')
             else:
@@ -1202,6 +1480,9 @@ class SettingsDialog(QDialog):
         self.redirect_uri = QLineEdit(self)
         self.redirect_uri.setText('http://127.0.0.1:8888/callback')
         self.redirect_uri.setStyleSheet("color: #888;")
+        # Make it read-only by default (can be unlocked if needed)
+        self.redirect_uri.setReadOnly(True)
+        self.redirect_uri.setToolTip('This is the default redirect URI. Change only if you need a different port.')
 
         load_dotenv()
         if os.getenv('SPOTIPY_CLIENT_ID'):
@@ -1210,10 +1491,22 @@ class SettingsDialog(QDialog):
             self.client_secret.setText(os.getenv('SPOTIPY_CLIENT_SECRET', ''))
         if os.getenv('SPOTIPY_REDIRECT_URI'):
             self.redirect_uri.setText(os.getenv('SPOTIPY_REDIRECT_URI'))
+            self.redirect_uri.setReadOnly(False)  # Allow editing if from env
 
         form_layout.addRow('Client ID:', self.client_id)
         form_layout.addRow('Client Secret:', self.client_secret)
-        form_layout.addRow('Redirect URI:', self.redirect_uri)
+        
+        # Redirect URI row with unlock button
+        redirect_row = QHBoxLayout()
+        redirect_row.addWidget(self.redirect_uri, stretch=1)
+        
+        self.unlock_uri_button = QPushButton('🔓')
+        self.unlock_uri_button.setFixedSize(36, 40)
+        self.unlock_uri_button.setToolTip('Unlock to edit redirect URI')
+        self.unlock_uri_button.clicked.connect(self._toggle_redirect_uri_lock)
+        redirect_row.addWidget(self.unlock_uri_button)
+        
+        form_layout.addRow('Redirect URI:', redirect_row)
 
         layout.addLayout(form_layout)
         # Help note about redirect URI
@@ -1241,6 +1534,19 @@ class SettingsDialog(QDialog):
         btn_layout.addWidget(btn_save)
 
         layout.addLayout(btn_layout)
+
+    def _toggle_redirect_uri_lock(self):
+        """Toggle redirect URI field between locked and unlocked."""
+        if self.redirect_uri.isReadOnly():
+            self.redirect_uri.setReadOnly(False)
+            self.redirect_uri.setStyleSheet("color: #ffffff; background: #181818;")
+            self.unlock_uri_button.setText('🔒')
+            self.unlock_uri_button.setToolTip('Lock redirect URI')
+        else:
+            self.redirect_uri.setReadOnly(True)
+            self.redirect_uri.setStyleSheet("color: #888; background: #1a1a1a;")
+            self.unlock_uri_button.setText('🔓')
+            self.unlock_uri_button.setToolTip('Unlock to edit redirect URI')
 
     def _open_spotify_dashboard(self):
         """Open Spotify Developer Dashboard in browser with instructions."""

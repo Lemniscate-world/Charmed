@@ -271,6 +271,23 @@ class SpotifyAPI:
             return self.sp.current_user()
         except Exception:
             return None
+    
+    @thread_safe_api_call
+    def is_premium_user(self):
+        """
+        Check if the current user has Spotify Premium.
+        
+        Returns:
+            bool: True if Premium, False if Free, None if unknown.
+        """
+        if not self.sp:
+            return None
+        try:
+            user = self.sp.current_user()
+            product = user.get('product', '').lower()
+            return product == 'premium'
+        except Exception:
+            return None
 
     def _retry_api_call(self, func, *args, max_retries=3, retry_delay=1, **kwargs):
         """
@@ -474,9 +491,16 @@ class SpotifyAPI:
         except SpotifyException as e:
             if hasattr(e, 'http_status'):
                 if e.http_status == 403:
-                    raise RuntimeError(
-                        'Playback requires Spotify Premium. Please upgrade your account.'
-                    )
+                    # Check if it's a Premium requirement
+                    error_msg = str(e).lower()
+                    if 'premium' in error_msg or 'premium_required' in error_msg:
+                        raise RuntimeError(
+                            'Playback requires Spotify Premium.\n\n'
+                            'Please upgrade to Spotify Premium to use Alarmify.\n'
+                            'Visit: https://www.spotify.com/premium'
+                        )
+                    else:
+                        raise RuntimeError(f'Playback forbidden: {e}')
                 elif e.http_status == 404:
                     raise RuntimeError(
                         'No active device found. Please start Spotify on one of your devices.'
@@ -533,9 +557,16 @@ class SpotifyAPI:
         except SpotifyException as e:
             if hasattr(e, 'http_status'):
                 if e.http_status == 403:
-                    raise RuntimeError(
-                        'Playback requires Spotify Premium. Please upgrade your account.'
-                    )
+                    # Check if it's a Premium requirement
+                    error_msg = str(e).lower()
+                    if 'premium' in error_msg or 'premium_required' in error_msg:
+                        raise RuntimeError(
+                            'Playback requires Spotify Premium.\n\n'
+                            'Please upgrade to Spotify Premium to use Alarmify.\n'
+                            'Visit: https://www.spotify.com/premium'
+                        )
+                    else:
+                        raise RuntimeError(f'Playback forbidden: {e}')
                 elif e.http_status == 404:
                     raise RuntimeError(
                         'No active device found. Please start Spotify on one of your devices.'
@@ -871,6 +902,16 @@ class ThreadSafeSpotifyAPI:
         """
         with self._lock:
             return self._api.play_playlist_by_uri(playlist_uri)
+    
+    def is_premium_user(self):
+        """
+        Thread-safe check if current user has Spotify Premium.
+        
+        Returns:
+            bool: True if Premium, False if Free, None if unknown.
+        """
+        with self._lock:
+            return self._api.is_premium_user()
     
     def set_volume(self, volume_percent):
         """

@@ -4,3 +4,4 @@ schedule
 python-dotenv
 pytest
 requests
+flet>=0.21.0
