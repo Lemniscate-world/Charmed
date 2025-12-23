@@ -151,9 +151,9 @@ class PlaylistItemWidget(QWidget):
         layout.setSpacing(12)
 
         self.image_label = QLabel()
-        self.image_label.setFixedSize(64, 64)
+        self.image_label.setFixedSize(72, 72)
         self.image_label.setStyleSheet(
-            "background-color: #282828; border-radius: 4px;"
+            "background-color: #282828; border-radius: 6px;"
         )
         self.image_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.image_label)
@@ -162,16 +162,16 @@ class PlaylistItemWidget(QWidget):
         text_layout.setSpacing(2)
 
         self.name_label = QLabel(playlist_data.get('name', 'Unknown'))
-        self.name_label.setFont(QFont('Arial', 11, QFont.Bold))
+        self.name_label.setFont(QFont('Segoe UI', 14, QFont.Bold))
         self.name_label.setStyleSheet("color: #FFFFFF;")
         text_layout.addWidget(self.name_label)
 
         track_count = playlist_data.get('track_count', 0)
         owner = playlist_data.get('owner', 'Unknown')
-        info_text = f"{track_count} tracks - by {owner}"
+        info_text = f"{track_count} tracks • {owner}"
         self.info_label = QLabel(info_text)
-        self.info_label.setFont(QFont('Arial', 9))
-        self.info_label.setStyleSheet("color: #B3B3B3;")
+        self.info_label.setFont(QFont('Segoe UI', 12))
+        self.info_label.setStyleSheet("color: #b3b3b3;")
         text_layout.addWidget(self.info_label)
 
         text_layout.addStretch()
@@ -190,7 +190,7 @@ class PlaylistItemWidget(QWidget):
         """
         if not pixmap.isNull():
             scaled = pixmap.scaled(
-                64, 64,
+                72, 72,
                 Qt.KeepAspectRatio,
                 Qt.SmoothTransformation
             )
@@ -199,7 +199,7 @@ class PlaylistItemWidget(QWidget):
     def enterEvent(self, event):
         """Handle mouse enter event for hover effect."""
         self._is_hovered = True
-        self.setStyleSheet("QWidget { background-color: #2a2a2a; border-radius: 4px; }")
+        self.setStyleSheet("QWidget { background-color: #2a2a2a; border-radius: 8px; }")
         super().enterEvent(event)
 
     def leaveEvent(self, event):
@@ -300,70 +300,74 @@ class AlarmApp(QtWidgets.QMainWindow):
     def _build_ui(self):
         """Build the complete UI layout programmatically."""
         self.setWindowTitle('Alarmify')
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(1000, 700)
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
 
         root_layout = QVBoxLayout(self.central_widget)
-        root_layout.setContentsMargins(16, 16, 16, 16)
-        root_layout.setSpacing(16)
+        root_layout.setContentsMargins(24, 24, 24, 24)
+        root_layout.setSpacing(24)
 
+        # Header with logo and status
         header = QHBoxLayout()
+        header.setSpacing(16)
 
         logo = QLabel('Alarmify')
         logo.setObjectName('appLogo')
-        logo.setFont(QFont('Arial', 24, QFont.Bold))
-        logo.setStyleSheet("color: #1DB954;")
+        logo.setFont(QFont('Segoe UI', 32, QFont.Bold))
         header.addWidget(logo)
 
         header.addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
 
         status_layout = QVBoxLayout()
-        status_layout.setSpacing(4)
+        status_layout.setSpacing(6)
+        status_layout.setAlignment(Qt.AlignRight | Qt.AlignTop)
 
         self.auth_status_label = QLabel('Not connected')
         self.auth_status_label.setObjectName('authStatus')
-        self.auth_status_label.setStyleSheet("color: #B3B3B3;")
         status_layout.addWidget(self.auth_status_label)
 
         self.device_status_label = QLabel('No active device')
         self.device_status_label.setObjectName('deviceStatus')
-        self.device_status_label.setStyleSheet("color: #B3B3B3; font-size: 10px;")
         status_layout.addWidget(self.device_status_label)
 
         header.addLayout(status_layout)
 
         self.settings_button = QPushButton('\u2699')
-        self.settings_button.setFixedSize(36, 36)
+        self.settings_button.setObjectName('settingsButton')
+        self.settings_button.setFixedSize(40, 40)
         self.settings_button.setToolTip('Settings')
         header.addWidget(self.settings_button)
 
         root_layout.addLayout(header)
 
         content = QHBoxLayout()
-        content.setSpacing(20)
+        content.setSpacing(24)
 
         left_panel = QVBoxLayout()
+        left_panel.setSpacing(12)
 
         playlist_header = QLabel('Your Playlists')
-        playlist_header.setFont(QFont('Arial', 14, QFont.Bold))
-        playlist_header.setStyleSheet("color: #FFFFFF;")
+        playlist_header.setObjectName('sectionHeader')
+        playlist_header.setFont(QFont('Segoe UI', 18, QFont.Bold))
         left_panel.addWidget(playlist_header)
 
         self.playlist_search = QLineEdit()
         self.playlist_search.setPlaceholderText('Search playlists...')
         self.playlist_search.setObjectName('playlistSearch')
+        self.playlist_search.setMinimumHeight(40)
         left_panel.addWidget(self.playlist_search)
 
         self.playlist_list = QListWidget()
         self.playlist_list.setObjectName('playlistList')
-        self.playlist_list.setMinimumWidth(350)
-        self.playlist_list.setSpacing(2)
+        self.playlist_list.setMinimumWidth(400)
+        self.playlist_list.setSpacing(4)
         self.playlist_list.setContextMenuPolicy(Qt.CustomContextMenu)
         left_panel.addWidget(self.playlist_list)
 
         btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(12)
 
         self.login_button = QPushButton('Login to Spotify')
         self.login_button.setObjectName('loginButton')
@@ -377,47 +381,51 @@ class AlarmApp(QtWidgets.QMainWindow):
         content.addLayout(left_panel, stretch=2)
 
         right_panel = QVBoxLayout()
-        right_panel.setSpacing(16)
+        right_panel.setSpacing(20)
 
         device_label = QLabel('Playback Device')
-        device_label.setFont(QFont('Arial', 14, QFont.Bold))
-        device_label.setStyleSheet("color: #FFFFFF;")
+        device_label.setObjectName('sectionHeader')
+        device_label.setFont(QFont('Segoe UI', 18, QFont.Bold))
         right_panel.addWidget(device_label)
 
         device_row = QHBoxLayout()
+        device_row.setSpacing(8)
         self.device_selector = QComboBox()
         self.device_selector.setObjectName('deviceSelector')
+        self.device_selector.setMinimumHeight(44)
         device_row.addWidget(self.device_selector, stretch=1)
 
         self.refresh_devices_button = QPushButton('\u21bb')
-        self.refresh_devices_button.setFixedSize(36, 36)
+        self.refresh_devices_button.setObjectName('refreshButton')
+        self.refresh_devices_button.setFixedSize(44, 44)
         self.refresh_devices_button.setToolTip('Refresh devices')
         device_row.addWidget(self.refresh_devices_button)
 
         right_panel.addLayout(device_row)
 
         time_label = QLabel('Alarm Time')
-        time_label.setFont(QFont('Arial', 14, QFont.Bold))
-        time_label.setStyleSheet("color: #FFFFFF;")
+        time_label.setObjectName('sectionHeader')
+        time_label.setFont(QFont('Segoe UI', 18, QFont.Bold))
         right_panel.addWidget(time_label)
 
         self.time_input = QTimeEdit(self)
         self.time_input.setDisplayFormat('HH:mm')
         self.time_input.setObjectName('timeInput')
-        self.time_input.setFont(QFont('Arial', 18))
-        self.time_input.setMinimumHeight(50)
+        self.time_input.setFont(QFont('Segoe UI', 28, QFont.Bold))
+        self.time_input.setMinimumHeight(60)
         right_panel.addWidget(self.time_input)
 
         self.alarm_preview_label = QLabel('Next alarm: None')
-        self.alarm_preview_label.setStyleSheet("color: #B3B3B3; font-style: italic;")
+        self.alarm_preview_label.setStyleSheet("color: #727272; font-style: italic; font-size: 12px;")
         right_panel.addWidget(self.alarm_preview_label)
 
         volume_label = QLabel('Alarm Volume')
-        volume_label.setFont(QFont('Arial', 14, QFont.Bold))
-        volume_label.setStyleSheet("color: #FFFFFF;")
+        volume_label.setObjectName('sectionHeader')
+        volume_label.setFont(QFont('Segoe UI', 18, QFont.Bold))
         right_panel.addWidget(volume_label)
 
         volume_row = QHBoxLayout()
+        volume_row.setSpacing(12)
 
         self.volume_slider = QSlider(Qt.Horizontal)
         self.volume_slider.setMinimum(0)
@@ -428,19 +436,25 @@ class AlarmApp(QtWidgets.QMainWindow):
         volume_row.addWidget(self.volume_slider)
 
         self.volume_value_label = QLabel('80%')
-        self.volume_value_label.setFixedWidth(45)
-        self.volume_value_label.setStyleSheet("color: #B3B3B3;")
+        self.volume_value_label.setFixedWidth(50)
+        self.volume_value_label.setStyleSheet("color: #b3b3b3; font-size: 14px; font-weight: 600;")
+        self.volume_value_label.setAlignment(Qt.AlignCenter)
         volume_row.addWidget(self.volume_value_label)
 
         right_panel.addLayout(volume_row)
 
+        button_layout = QVBoxLayout()
+        button_layout.setSpacing(12)
+
         self.manage_alarms_button = QPushButton('Manage Alarms')
         self.manage_alarms_button.setObjectName('manageAlarmsButton')
-        right_panel.addWidget(self.manage_alarms_button)
+        button_layout.addWidget(self.manage_alarms_button)
 
         self.view_logs_button = QPushButton('View Logs')
         self.view_logs_button.setObjectName('viewLogsButton')
-        right_panel.addWidget(self.view_logs_button)
+        button_layout.addWidget(self.view_logs_button)
+
+        right_panel.addLayout(button_layout)
 
         right_panel.addStretch()
 
@@ -752,7 +766,7 @@ class AlarmApp(QtWidgets.QMainWindow):
                 widget = PlaylistItemWidget(playlist)
 
                 item = QListWidgetItem(self.playlist_list)
-                item.setSizeHint(QSize(340, 76))
+                item.setSizeHint(QSize(380, 88))
 
                 item.setData(Qt.UserRole, playlist)
 
