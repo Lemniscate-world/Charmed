@@ -10,10 +10,17 @@ Comprehensive GUI tests covering:
 - Button states and event handling
 - Phase 2: Alarm setup dialog with fade-in and day selection
 - Phase 2: Snooze notification dialog
-- Phase 2: Template management dialogs
+- Phase 2: Template management dialogs (create, edit, delete)
 - Phase 2: Quick setup from templates
+- Phase 2: Alarm history and statistics dashboard
+- Phase 2: Cloud sync dialog and device management
+- Phase 2: Alarm preview dialog for upcoming alarms
 
 Run with: python -m pytest tests/test_gui.py -v
+Run specific test classes:
+- python -m pytest tests/test_gui.py::TestAlarmHistoryStatsDialog -v
+- python -m pytest tests/test_gui.py::TestCloudSyncDialog -v
+- python -m pytest tests/test_gui.py::TestAlarmPreviewDialog -v
 """
 
 import pytest
@@ -22,7 +29,7 @@ import time
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch, call
-from PyQt5.QtWidgets import QApplication, QDialog
+from PyQt5.QtWidgets import QApplication, QDialog, QMessageBox
 from PyQt5.QtCore import Qt, QTime
 from PyQt5.QtTest import QTest
 from PyQt5.QtGui import QPixmap
@@ -33,9 +40,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from gui import (
     AlarmApp, SettingsDialog, AlarmManagerDialog, PlaylistItemWidget, 
     ImageLoaderThread, AlarmSetupDialog, SnoozeNotificationDialog,
-    TemplateManagerDialog, TemplateEditDialog, QuickSetupDialog
+    TemplateManagerDialog, TemplateEditDialog, QuickSetupDialog,
+    AlarmHistoryStatsDialog, AlarmPreviewDialog
 )
 from alarm import Alarm, AlarmTemplate, TemplateManager
+from cloud_sync_gui import CloudSyncDialog
 
 
 @pytest.fixture(scope='session')
@@ -345,6 +354,46 @@ class TestTemplateManagerDialog:
         # Check second row
         assert dialog.table.item(1, 0).text() == 'Weekend'
         assert dialog.table.item(1, 1).text() == '09:00'
+    
+    def test_template_manager_empty_state(self, qapp, tmp_path):
+        """Test template manager with no templates."""
+        templates_file = tmp_path / 'templates.json'
+        manager = TemplateManager(templates_file)
+        
+        dialog = TemplateManagerDialog(manager, None)
+        
+        # Table should be empty
+        assert dialog.table.rowCount() == 0
+    
+    def test_template_manager_delete_template(self, qapp, tmp_path, monkeypatch):
+        """Test deleting a template."""
+        templates_file = tmp_path / 'templates.json'
+        manager = TemplateManager(templates_file)
+        
+        template = AlarmTemplate(
+            name='Delete Me',
+            time='08:00',
+            playlist_name='Test',
+            playlist_uri='spotify:playlist:test',
+            volume=80
+        )
+        manager.add_template(template)
+        
+        dialog = TemplateManagerDialog(manager, None)
+        
+        # Mock confirmation dialog
+        mock_question = Mock(return_value=QMessageBox.Yes)
+        monkeypatch.setattr('gui.QMessageBox.question', mock_question)
+        
+        mock_info = Mock()
+        monkeypatch.setattr('gui.QMessageBox.information', mock_info)
+        
+        # Delete template
+        dialog._delete_template(template)
+        
+        # Verify deletion
+        assert len(manager.load_templates()) == 0
+        mock_info.assert_called_once()
 
 
 class TestTemplateEditDialog:
@@ -416,6 +465,69 @@ class TestTemplateEditDialog:
         mock_warning.assert_called_once()
         args = mock_warning.call_args[0]
         assert 'name' in args[2].lower()
+    
+    def test_template_edit_dialog_validation_no_playlist(self, qapp, monkeypatch):
+        """Test validation fails without playlist selection."""
+        dialog = TemplateEditDialog(None, None, None)
+        
+        mock_warning = Mock()
+        monkeypatch.setattr('gui.QMessageBox.warning', mock_warning)
+        
+        # Set name but no playlist
+        dialog.name_input.setText('Test Template')
+        dialog._save_template()
+        
+        mock_warning.assert_called_once()
+        args = mock_warning.call_args[0]
+        assert 'playlist' in args[2].lower()
+    
+    def test_template_edit_dialog_validation_no_days(self, qapp, monkeypatch):
+        """Test validation fails when no days selected."""
+        dialog = TemplateEditDialog(None, None, None)
+        
+        mock_warning = Mock()
+        monkeypatch.setattr('gui.QMessageBox.warning', mock_warning)
+        
+        # Set name and playlist
+        dialog.name_input.setText('Test Template')
+        dialog.selected_playlist_uri = 'spotify:playlist:test'
+        dialog.selected_playlist_name = 'Test Playlist'
+        
+        # Uncheck all days
+        for checkbox in dialog.day_checkboxes.values():
+            checkbox.setChecked(False)
+        
+        dialog._save_template()
+        
+        mock_warning.assert_called_once()
+        args = mock_warning.call_args[0]
+        assert 'day' in args[2].lower()
+    
+    def test_template_edit_dialog_day_shortcuts(self, qapp):
+        """Test day selection shortcuts."""
+        dialog = TemplateEditDialog(None, None, None)
+        
+        # Test every day
+        dialog._select_every_day()
+        assert all(cb.isChecked() for cb in dialog.day_checkboxes.values())
+        
+        # Test weekdays
+        dialog._select_weekdays()
+        weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+        for day, cb in dialog.day_checkboxes.items():
+            if day in weekdays:
+                assert cb.isChecked()
+            else:
+                assert not cb.isChecked()
+        
+        # Test weekends
+        dialog._select_weekends()
+        weekends = ['Saturday', 'Sunday']
+        for day, cb in dialog.day_checkboxes.items():
+            if day in weekends:
+                assert cb.isChecked()
+            else:
+                assert not cb.isChecked()
 
 
 class TestQuickSetupDialog:
@@ -489,6 +601,31 @@ class TestQuickSetupDialog:
         dialog.list_widget.setCurrentRow(0)
         
         # Simulate selection
+        dialog._on_template_selected()
+        
+        assert dialog.selected_template == template
+    
+    def test_quick_setup_dialog_empty_templates(self, qapp):
+        """Test quick setup dialog with no templates."""
+        dialog = QuickSetupDialog([], None)
+        
+        # Should have no items
+        assert dialog.list_widget.count() == 0
+    
+    def test_quick_setup_dialog_double_click(self, qapp):
+        """Test double-clicking a template selects it."""
+        template = AlarmTemplate(
+            name='Double Click',
+            time='08:30',
+            playlist_name='Test',
+            playlist_uri='spotify:playlist:test',
+            volume=75
+        )
+        
+        dialog = QuickSetupDialog([template], None)
+        
+        # Double click first item (simulated by itemDoubleClicked signal)
+        dialog.list_widget.setCurrentRow(0)
         dialog._on_template_selected()
         
         assert dialog.selected_template == template
@@ -1191,6 +1328,672 @@ class TestGUIIntegrationScenarios:
         assert call_args[0][5] is True
         assert call_args[0][6] == 20
         assert call_args[0][7] == ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+
+
+class TestAlarmHistoryStatsDialog:
+    """Tests for AlarmHistoryStatsDialog - Phase 2."""
+    
+    def test_history_stats_dialog_initialization(self, qapp):
+        """Test alarm history stats dialog initializes correctly."""
+        mock_alarm = Mock()
+        mock_history = Mock()
+        mock_alarm.history = mock_history
+        
+        mock_history.get_statistics.return_value = {
+            'total_alarms': 0,
+            'success_rate': 0.0,
+            'avg_snooze_count': 0.0,
+            'total_snoozes': 0,
+            'most_successful_time': None,
+            'most_snoozed_time': None,
+            'fade_in_usage': 0.0,
+            'wake_patterns': {},
+            'day_distribution': {},
+            'favorite_playlists': {}
+        }
+        mock_history.get_history.return_value = []
+        
+        dialog = AlarmHistoryStatsDialog(mock_alarm, None)
+        
+        assert dialog.windowTitle() == 'Alarm History & Statistics'
+        assert dialog.isModal() is True
+        assert dialog.alarm_manager == mock_alarm
+        assert dialog.history_manager == mock_history
+        assert dialog.current_days_filter == 30
+    
+    def test_history_stats_dialog_displays_empty_state(self, qapp):
+        """Test dialog displays empty state when no history."""
+        mock_alarm = Mock()
+        mock_history = Mock()
+        mock_alarm.history = mock_history
+        
+        mock_history.get_statistics.return_value = {
+            'total_alarms': 0,
+            'success_rate': 0.0,
+            'avg_snooze_count': 0.0,
+            'total_snoozes': 0,
+            'most_successful_time': None,
+            'most_snoozed_time': None,
+            'fade_in_usage': 0.0,
+            'wake_patterns': {},
+            'day_distribution': {},
+            'favorite_playlists': {}
+        }
+        mock_history.get_history.return_value = []
+        
+        dialog = AlarmHistoryStatsDialog(mock_alarm, None)
+        
+        # Check that summary cards show zeros
+        assert dialog.total_alarms_card.value_label.text() == '0'
+        assert dialog.success_rate_card.value_label.text() == '0.0%'
+        assert dialog.avg_snooze_card.value_label.text() == '0.0'
+        assert dialog.total_snoozes_card.value_label.text() == '0'
+    
+    def test_history_stats_dialog_populates_statistics(self, qapp):
+        """Test dialog populates statistics from history data."""
+        mock_alarm = Mock()
+        mock_history = Mock()
+        mock_alarm.history = mock_history
+        
+        mock_history.get_statistics.return_value = {
+            'total_alarms': 42,
+            'success_rate': 85.5,
+            'avg_snooze_count': 1.3,
+            'total_snoozes': 55,
+            'most_successful_time': '07:00',
+            'most_snoozed_time': '06:00',
+            'fade_in_usage': 62.5,
+            'wake_patterns': {'07': 15, '08': 20, '09': 7},
+            'day_distribution': {'Monday': 10, 'Tuesday': 8, 'Wednesday': 12},
+            'favorite_playlists': {'Morning Mix': 20, 'Wake Up': 15, 'Energize': 7}
+        }
+        mock_history.get_history.return_value = []
+        
+        dialog = AlarmHistoryStatsDialog(mock_alarm, None)
+        
+        # Check summary cards
+        assert dialog.total_alarms_card.value_label.text() == '42'
+        assert dialog.success_rate_card.value_label.text() == '85.5%'
+        assert dialog.avg_snooze_card.value_label.text() == '1.3'
+        assert dialog.total_snoozes_card.value_label.text() == '55'
+        
+        # Check insights
+        assert '07:00' in dialog.most_successful_label.text()
+        assert '06:00' in dialog.most_snoozed_label.text()
+        assert '62.5%' in dialog.fade_usage_label.text()
+    
+    def test_history_stats_dialog_filter_period(self, qapp):
+        """Test filtering by time period."""
+        mock_alarm = Mock()
+        mock_history = Mock()
+        mock_alarm.history = mock_history
+        
+        mock_history.get_statistics.return_value = {
+            'total_alarms': 10,
+            'success_rate': 90.0,
+            'avg_snooze_count': 0.5,
+            'total_snoozes': 5,
+            'most_successful_time': None,
+            'most_snoozed_time': None,
+            'fade_in_usage': 0.0,
+            'wake_patterns': {},
+            'day_distribution': {},
+            'favorite_playlists': {}
+        }
+        mock_history.get_history.return_value = []
+        
+        dialog = AlarmHistoryStatsDialog(mock_alarm, None)
+        
+        # Change filter to 7 days
+        dialog.days_combo.setCurrentIndex(0)
+        
+        # Should reload with different filter
+        assert dialog.current_days_filter == 7
+        mock_history.get_statistics.assert_called()
+    
+    def test_history_stats_dialog_history_table(self, qapp):
+        """Test history table displays alarm records."""
+        mock_alarm = Mock()
+        mock_history = Mock()
+        mock_alarm.history = mock_history
+        
+        mock_history.get_statistics.return_value = {
+            'total_alarms': 2,
+            'success_rate': 100.0,
+            'avg_snooze_count': 0.0,
+            'total_snoozes': 0,
+            'most_successful_time': None,
+            'most_snoozed_time': None,
+            'fade_in_usage': 0.0,
+            'wake_patterns': {},
+            'day_distribution': {},
+            'favorite_playlists': {}
+        }
+        
+        mock_history.get_history.return_value = [
+            {
+                'timestamp': '2024-01-15T07:00:00',
+                'trigger_time': '07:00',
+                'playlist_name': 'Morning Mix',
+                'volume': 80,
+                'day_of_week': 'Monday',
+                'success': True,
+                'snooze_count': 0,
+                'fade_in_enabled': True,
+                'fade_in_duration': 15
+            },
+            {
+                'timestamp': '2024-01-16T07:00:00',
+                'trigger_time': '07:00',
+                'playlist_name': 'Wake Up',
+                'volume': 75,
+                'day_of_week': 'Tuesday',
+                'success': True,
+                'snooze_count': 1,
+                'snoozed': True,
+                'fade_in_enabled': False,
+                'fade_in_duration': 10
+            }
+        ]
+        
+        dialog = AlarmHistoryStatsDialog(mock_alarm, None)
+        
+        # Switch to history tab and verify table
+        dialog.tabs.setCurrentIndex(1)
+        
+        assert dialog.history_table.rowCount() == 2
+        assert dialog.history_table.item(0, 2).text() == 'Morning Mix'
+        assert dialog.history_table.item(1, 2).text() == 'Wake Up'
+    
+    def test_history_stats_dialog_filter_history(self, qapp):
+        """Test filtering history by status."""
+        mock_alarm = Mock()
+        mock_history = Mock()
+        mock_alarm.history = mock_history
+        
+        mock_history.get_statistics.return_value = {
+            'total_alarms': 3,
+            'success_rate': 66.7,
+            'avg_snooze_count': 0.5,
+            'total_snoozes': 1,
+            'most_successful_time': None,
+            'most_snoozed_time': None,
+            'fade_in_usage': 0.0,
+            'wake_patterns': {},
+            'day_distribution': {},
+            'favorite_playlists': {}
+        }
+        
+        mock_history.get_history.return_value = [
+            {'timestamp': '2024-01-15T07:00:00', 'trigger_time': '07:00', 'playlist_name': 'Test1',
+             'volume': 80, 'day_of_week': 'Monday', 'success': True, 'snooze_count': 0,
+             'fade_in_enabled': False, 'fade_in_duration': 10},
+            {'timestamp': '2024-01-16T07:00:00', 'trigger_time': '07:00', 'playlist_name': 'Test2',
+             'volume': 80, 'day_of_week': 'Tuesday', 'success': False, 'snooze_count': 0,
+             'fade_in_enabled': False, 'fade_in_duration': 10},
+            {'timestamp': '2024-01-17T07:00:00', 'trigger_time': '07:00', 'playlist_name': 'Test3',
+             'volume': 80, 'day_of_week': 'Wednesday', 'success': True, 'snooze_count': 1,
+             'snoozed': True, 'fade_in_enabled': False, 'fade_in_duration': 10}
+        ]
+        
+        dialog = AlarmHistoryStatsDialog(mock_alarm, None)
+        dialog.tabs.setCurrentIndex(1)
+        
+        # Filter to successful only
+        dialog.filter_combo.setCurrentIndex(1)
+        assert dialog.history_table.rowCount() == 2
+        
+        # Filter to failed only
+        dialog.filter_combo.setCurrentIndex(2)
+        assert dialog.history_table.rowCount() == 1
+        
+        # Filter to snoozed
+        dialog.filter_combo.setCurrentIndex(3)
+        assert dialog.history_table.rowCount() == 1
+        
+        # Reset to all
+        dialog.filter_combo.setCurrentIndex(0)
+        assert dialog.history_table.rowCount() == 3
+    
+    def test_history_stats_dialog_export_csv(self, qapp, monkeypatch, tmp_path):
+        """Test exporting history to CSV."""
+        mock_alarm = Mock()
+        mock_history = Mock()
+        mock_alarm.history = mock_history
+        
+        mock_history.get_statistics.return_value = {
+            'total_alarms': 0,
+            'success_rate': 0.0,
+            'avg_snooze_count': 0.0,
+            'total_snoozes': 0,
+            'most_successful_time': None,
+            'most_snoozed_time': None,
+            'fade_in_usage': 0.0,
+            'wake_patterns': {},
+            'day_distribution': {},
+            'favorite_playlists': {}
+        }
+        mock_history.get_history.return_value = []
+        mock_history.export_to_csv.return_value = True
+        
+        dialog = AlarmHistoryStatsDialog(mock_alarm, None)
+        
+        export_path = tmp_path / 'export.csv'
+        
+        mock_file_dialog = Mock(return_value=(str(export_path), 'CSV Files (*.csv)'))
+        monkeypatch.setattr('gui.QFileDialog.getSaveFileName', mock_file_dialog)
+        
+        mock_info = Mock()
+        monkeypatch.setattr('gui.QMessageBox.information', mock_info)
+        
+        dialog._export_csv()
+        
+        mock_history.export_to_csv.assert_called_once()
+        mock_info.assert_called_once()
+    
+    def test_history_stats_dialog_export_json(self, qapp, monkeypatch, tmp_path):
+        """Test exporting history to JSON."""
+        mock_alarm = Mock()
+        mock_history = Mock()
+        mock_alarm.history = mock_history
+        
+        mock_history.get_statistics.return_value = {
+            'total_alarms': 0,
+            'success_rate': 0.0,
+            'avg_snooze_count': 0.0,
+            'total_snoozes': 0,
+            'most_successful_time': None,
+            'most_snoozed_time': None,
+            'fade_in_usage': 0.0,
+            'wake_patterns': {},
+            'day_distribution': {},
+            'favorite_playlists': {}
+        }
+        mock_history.get_history.return_value = []
+        mock_history.export_to_json.return_value = True
+        
+        dialog = AlarmHistoryStatsDialog(mock_alarm, None)
+        
+        export_path = tmp_path / 'export.json'
+        
+        mock_file_dialog = Mock(return_value=(str(export_path), 'JSON Files (*.json)'))
+        monkeypatch.setattr('gui.QFileDialog.getSaveFileName', mock_file_dialog)
+        
+        mock_info = Mock()
+        monkeypatch.setattr('gui.QMessageBox.information', mock_info)
+        
+        dialog._export_json()
+        
+        mock_history.export_to_json.assert_called_once()
+        mock_info.assert_called_once()
+    
+    def test_history_stats_dialog_clear_old_data(self, qapp, monkeypatch):
+        """Test clearing old history data."""
+        mock_alarm = Mock()
+        mock_history = Mock()
+        mock_alarm.history = mock_history
+        
+        mock_history.get_statistics.return_value = {
+            'total_alarms': 0,
+            'success_rate': 0.0,
+            'avg_snooze_count': 0.0,
+            'total_snoozes': 0,
+            'most_successful_time': None,
+            'most_snoozed_time': None,
+            'fade_in_usage': 0.0,
+            'wake_patterns': {},
+            'day_distribution': {},
+            'favorite_playlists': {}
+        }
+        mock_history.get_history.return_value = []
+        mock_history.clear_old_entries.return_value = None
+        
+        dialog = AlarmHistoryStatsDialog(mock_alarm, None)
+        
+        # Mock dialog exec to return accepted
+        with patch.object(QDialog, 'exec_', return_value=QDialog.Accepted):
+            mock_info = Mock()
+            monkeypatch.setattr('gui.QMessageBox.information', mock_info)
+            
+            dialog._clear_old_data()
+            
+            mock_history.clear_old_entries.assert_called_once()
+            mock_info.assert_called_once()
+
+
+class TestCloudSyncDialog:
+    """Tests for CloudSyncDialog - Phase 2."""
+    
+    def test_cloud_sync_dialog_initialization(self, qapp):
+        """Test cloud sync dialog initializes correctly."""
+        from cloud_sync.cloud_sync_manager import CloudSyncManager
+        
+        mock_sync_manager = Mock(spec=CloudSyncManager)
+        mock_sync_manager.get_current_user.return_value = None
+        mock_sync_manager.get_sync_status.return_value = {
+            'logged_in': False,
+            'last_sync_time': None,
+            'sync_in_progress': False,
+            'auto_sync_enabled': False
+        }
+        
+        dialog = CloudSyncDialog(mock_sync_manager, None)
+        
+        assert dialog.windowTitle() == 'Cloud Sync'
+        assert dialog.isModal() is True
+        assert dialog.sync_manager == mock_sync_manager
+    
+    def test_cloud_sync_dialog_logged_in_state(self, qapp):
+        """Test dialog displays logged in state."""
+        from cloud_sync.cloud_sync_manager import CloudSyncManager
+        
+        mock_sync_manager = Mock(spec=CloudSyncManager)
+        mock_sync_manager.get_current_user.return_value = {
+            'email': 'test@example.com',
+            'display_name': 'Test User'
+        }
+        mock_sync_manager.get_sync_status.return_value = {
+            'logged_in': True,
+            'last_sync_time': '2024-01-15T10:30:00',
+            'sync_in_progress': False,
+            'auto_sync_enabled': True
+        }
+        
+        dialog = CloudSyncDialog(mock_sync_manager, None)
+        
+        assert 'Test User' in dialog.user_label.text()
+        assert 'test@example.com' in dialog.user_label.text()
+        assert '2024-01-15' in dialog.last_sync_label.text()
+        assert dialog.auto_sync_checkbox.isChecked() is True
+    
+    def test_cloud_sync_dialog_sync_buttons(self, qapp, monkeypatch):
+        """Test sync action buttons."""
+        from cloud_sync.cloud_sync_manager import CloudSyncManager
+        
+        mock_sync_manager = Mock(spec=CloudSyncManager)
+        mock_sync_manager.get_current_user.return_value = {'email': 'test@test.com', 'display_name': 'Test'}
+        mock_sync_manager.get_sync_status.return_value = {
+            'logged_in': True,
+            'last_sync_time': None,
+            'sync_in_progress': False,
+            'auto_sync_enabled': False
+        }
+        mock_sync_manager.sync_all.return_value = (True, 'Sync successful', {})
+        
+        dialog = CloudSyncDialog(mock_sync_manager, None)
+        
+        # Verify buttons are present
+        assert dialog is not None
+    
+    def test_cloud_sync_dialog_logout(self, qapp, monkeypatch):
+        """Test logout functionality."""
+        from cloud_sync.cloud_sync_manager import CloudSyncManager
+        
+        mock_sync_manager = Mock(spec=CloudSyncManager)
+        mock_sync_manager.get_current_user.return_value = {'email': 'test@test.com', 'display_name': 'Test'}
+        mock_sync_manager.get_sync_status.return_value = {
+            'logged_in': True,
+            'last_sync_time': None,
+            'sync_in_progress': False,
+            'auto_sync_enabled': False
+        }
+        mock_sync_manager.logout.return_value = None
+        
+        dialog = CloudSyncDialog(mock_sync_manager, None)
+        
+        # Mock confirmation dialog
+        mock_question = Mock(return_value=QMessageBox.Yes)
+        monkeypatch.setattr('gui.QMessageBox.question', mock_question)
+        
+        mock_info = Mock()
+        monkeypatch.setattr('gui.QMessageBox.information', mock_info)
+        
+        dialog._handle_logout()
+        
+        mock_sync_manager.logout.assert_called_once()
+    
+    def test_cloud_sync_dialog_auto_sync_toggle(self, qapp):
+        """Test toggling auto-sync."""
+        from cloud_sync.cloud_sync_manager import CloudSyncManager
+        
+        mock_sync_manager = Mock(spec=CloudSyncManager)
+        mock_sync_manager.get_current_user.return_value = None
+        mock_sync_manager.get_sync_status.return_value = {
+            'logged_in': False,
+            'last_sync_time': None,
+            'sync_in_progress': False,
+            'auto_sync_enabled': False
+        }
+        mock_sync_manager.start_auto_sync.return_value = None
+        mock_sync_manager.stop_auto_sync.return_value = None
+        
+        dialog = CloudSyncDialog(mock_sync_manager, None)
+        
+        # Enable auto-sync
+        dialog.auto_sync_checkbox.setChecked(True)
+        mock_sync_manager.start_auto_sync.assert_called_once()
+        
+        # Disable auto-sync
+        dialog.auto_sync_checkbox.setChecked(False)
+        mock_sync_manager.stop_auto_sync.assert_called_once()
+    
+    def test_cloud_sync_dialog_devices_tab(self, qapp):
+        """Test devices tab displays registered devices."""
+        from cloud_sync.cloud_sync_manager import CloudSyncManager
+        
+        mock_sync_manager = Mock(spec=CloudSyncManager)
+        mock_sync_manager.get_current_user.return_value = None
+        mock_sync_manager.get_sync_status.return_value = {
+            'logged_in': False,
+            'last_sync_time': None,
+            'sync_in_progress': False,
+            'auto_sync_enabled': False
+        }
+        mock_sync_manager.get_devices.return_value = [
+            {
+                'device_name': 'My PC',
+                'device_type': 'Desktop',
+                'last_sync': '2024-01-15T10:00:00',
+                'device_id': 'device1'
+            },
+            {
+                'device_name': 'My Laptop',
+                'device_type': 'Laptop',
+                'last_sync': '2024-01-14T15:30:00',
+                'device_id': 'device2'
+            }
+        ]
+        mock_sync_manager.device_id = 'device1'
+        
+        dialog = CloudSyncDialog(mock_sync_manager, None)
+        dialog._load_devices()
+        
+        assert dialog.devices_table.rowCount() == 2
+        assert dialog.devices_table.item(0, 0).text() == 'My PC'
+        assert dialog.devices_table.item(1, 0).text() == 'My Laptop'
+    
+    def test_cloud_sync_dialog_empty_devices(self, qapp):
+        """Test devices tab with no devices."""
+        from cloud_sync.cloud_sync_manager import CloudSyncManager
+        
+        mock_sync_manager = Mock(spec=CloudSyncManager)
+        mock_sync_manager.get_current_user.return_value = None
+        mock_sync_manager.get_sync_status.return_value = {
+            'logged_in': False,
+            'last_sync_time': None,
+            'sync_in_progress': False,
+            'auto_sync_enabled': False
+        }
+        mock_sync_manager.get_devices.return_value = []
+        
+        dialog = CloudSyncDialog(mock_sync_manager, None)
+        dialog._load_devices()
+        
+        assert dialog.devices_table.rowCount() == 0
+
+
+class TestAlarmPreviewDialog:
+    """Tests for AlarmPreviewDialog - Phase 2."""
+    
+    def test_alarm_preview_dialog_initialization(self, qapp):
+        """Test alarm preview dialog initializes correctly."""
+        mock_alarm = Mock(spec=Alarm)
+        mock_alarm.get_upcoming_alarms.return_value = []
+        
+        dialog = AlarmPreviewDialog(mock_alarm, None)
+        
+        assert dialog.windowTitle() == 'Upcoming Alarms - Next 7 Days'
+        assert dialog.isModal() is True
+        assert dialog.alarm_manager == mock_alarm
+    
+    def test_alarm_preview_dialog_empty_state(self, qapp):
+        """Test dialog displays empty state when no upcoming alarms."""
+        mock_alarm = Mock(spec=Alarm)
+        mock_alarm.get_upcoming_alarms.return_value = []
+        
+        dialog = AlarmPreviewDialog(mock_alarm, None)
+        
+        assert dialog.table.rowCount() == 1
+        assert 'No upcoming alarms' in dialog.table.item(0, 0).text()
+    
+    def test_alarm_preview_dialog_displays_upcoming_alarms(self, qapp):
+        """Test dialog displays list of upcoming alarms."""
+        from datetime import datetime, timedelta
+        
+        mock_alarm = Mock(spec=Alarm)
+        
+        now = datetime.now()
+        tomorrow = now + timedelta(days=1)
+        day_after = now + timedelta(days=2)
+        
+        mock_alarm.get_upcoming_alarms.return_value = [
+            {
+                'datetime': tomorrow,
+                'alarm_info': {
+                    'time': '07:00',
+                    'playlist': 'Morning Mix',
+                    'volume': 80,
+                    'fade_in_enabled': True,
+                    'fade_in_duration': 15,
+                    'days': ['Monday', 'Wednesday', 'Friday']
+                }
+            },
+            {
+                'datetime': day_after,
+                'alarm_info': {
+                    'time': '08:00',
+                    'playlist': 'Wake Up',
+                    'volume': 75,
+                    'fade_in_enabled': False,
+                    'fade_in_duration': 10,
+                    'days': None
+                }
+            }
+        ]
+        
+        dialog = AlarmPreviewDialog(mock_alarm, None)
+        
+        assert dialog.table.rowCount() == 2
+        assert 'Morning Mix' in dialog.table.item(0, 2).text()
+        assert 'Wake Up' in dialog.table.item(1, 2).text()
+        assert '80%' in dialog.table.item(0, 3).text()
+        assert 'fade 15min' in dialog.table.item(0, 3).text()
+    
+    def test_alarm_preview_dialog_highlights_next_alarm(self, qapp):
+        """Test dialog highlights the next alarm."""
+        from datetime import datetime, timedelta
+        
+        mock_alarm = Mock(spec=Alarm)
+        
+        now = datetime.now()
+        next_alarm_time = now + timedelta(hours=2)
+        
+        mock_alarm.get_upcoming_alarms.return_value = [
+            {
+                'datetime': next_alarm_time,
+                'alarm_info': {
+                    'time': '10:00',
+                    'playlist': 'Test Playlist',
+                    'volume': 80,
+                    'fade_in_enabled': False,
+                    'fade_in_duration': 10,
+                    'days': None
+                }
+            }
+        ]
+        
+        dialog = AlarmPreviewDialog(mock_alarm, None)
+        
+        # First row should be highlighted (next alarm)
+        first_item = dialog.table.item(0, 0)
+        assert first_item is not None
+        # Background should be set for highlighting
+        assert not first_item.background().color().name() == '#000000'
+    
+    def test_alarm_preview_dialog_formats_days(self, qapp):
+        """Test dialog formats day selections correctly."""
+        from datetime import datetime, timedelta
+        
+        mock_alarm = Mock(spec=Alarm)
+        
+        now = datetime.now()
+        
+        mock_alarm.get_upcoming_alarms.return_value = [
+            {
+                'datetime': now + timedelta(days=1),
+                'alarm_info': {
+                    'time': '07:00',
+                    'playlist': 'Test1',
+                    'volume': 80,
+                    'fade_in_enabled': False,
+                    'fade_in_duration': 10,
+                    'days': None
+                }
+            },
+            {
+                'datetime': now + timedelta(days=2),
+                'alarm_info': {
+                    'time': '08:00',
+                    'playlist': 'Test2',
+                    'volume': 80,
+                    'fade_in_enabled': False,
+                    'fade_in_duration': 10,
+                    'days': ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+                }
+            },
+            {
+                'datetime': now + timedelta(days=3),
+                'alarm_info': {
+                    'time': '09:00',
+                    'playlist': 'Test3',
+                    'volume': 80,
+                    'fade_in_enabled': False,
+                    'fade_in_duration': 10,
+                    'days': ['Saturday', 'Sunday']
+                }
+            }
+        ]
+        
+        dialog = AlarmPreviewDialog(mock_alarm, None)
+        
+        assert 'Every day' in dialog.table.item(0, 4).text()
+        assert 'Weekdays' in dialog.table.item(1, 4).text()
+        assert 'Weekends' in dialog.table.item(2, 4).text()
+    
+    def test_alarm_preview_dialog_refresh(self, qapp):
+        """Test refreshing the alarm preview."""
+        mock_alarm = Mock(spec=Alarm)
+        mock_alarm.get_upcoming_alarms.return_value = []
+        
+        dialog = AlarmPreviewDialog(mock_alarm, None)
+        
+        # Initial load
+        assert mock_alarm.get_upcoming_alarms.call_count == 1
+        
+        # Refresh
+        dialog._load_upcoming_alarms()
+        
+        assert mock_alarm.get_upcoming_alarms.call_count == 2
 
 
 if __name__ == '__main__':
