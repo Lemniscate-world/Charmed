@@ -1,4 +1,4 @@
-﻿"""
+"""
 alarm.py - Alarm scheduling module for Alarmify
 
 This module provides the Alarm class for scheduling playlist alarms.
@@ -16,6 +16,10 @@ Features:
 - Retry logic with exponential backoff for Spotify API failures
 - System tray notifications for alarm trigger status
 - Snooze functionality with fade-in preservation
+- Device auto-wake 60 seconds before alarm triggers
+- Health monitoring every 2 minutes during active alarms
+- Automatic retry with device reactivation if playback fails
+- Fallback system notification if all retry attempts fail
 
 Fade-In Implementation:
 - FadeInController: QTimer-based volume controller with 5-second intervals
@@ -24,10 +28,18 @@ Fade-In Implementation:
 - Thread-safe operation compatible with concurrent alarms
 - Preview mode for testing fade-in before alarm triggers
 
+Device Wake Management:
+- DeviceWakeManager: Handles device wake and reliability monitoring
+- Pre-wake: Activates devices 60 seconds before alarm time
+- Health monitoring: Checks device status every 2 minutes during active alarms
+- Retry logic: Attempts to reactivate and restart playback if device becomes inactive
+- Fallback notifications: Shows system notification if playback fails after retries
+
 Dependencies:
 - schedule: Job scheduling library
 - threading: Background execution and synchronization
 - PyQt5: QTimer and signals for fade-in controller (optional)
+- device_wake_manager: Device wake and reliability management
 """
 
 import schedule  # Job scheduling library
@@ -41,6 +53,7 @@ from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import List, Optional
 from logging_config import get_logger
+from device_wake_manager import DeviceWakeManager
 
 logger = get_logger(__name__)
 
@@ -375,6 +388,7 @@ class Alarm:
         self._alarms_lock = threading.Lock()
         self.gui_app = gui_app
         self.active_fade_controller = None
+        self.device_wake_manager = None
         self.snooze_state_file = Path.home() / '.alarmify' / 'snooze_state.json'
         self._ensure_state_directory()
         self._load_snooze_state()
@@ -416,6 +430,10 @@ class Alarm:
         # Parse and normalize days parameter
         active_days = self._parse_days(days)
         
+        # Generate unique alarm ID
+        import uuid
+        alarm_id = str(uuid.uuid4())
+        
         job = schedule.every().day.at(time_str).do(
             self._conditional_play_playlist,
             playlist_uri,
@@ -424,7 +442,8 @@ class Alarm:
             playlist_name,
             fade_in_enabled,
             fade_in_duration,
-            active_days
+            active_days,
+            alarm_id
         )
 
         alarm_info = {
@@ -435,7 +454,9 @@ class Alarm:
             'fade_in_enabled': fade_in_enabled,
             'fade_in_duration': fade_in_duration,
             'days': active_days,
-            'job': job
+            'job': job,
+            'id': alarm_id,
+            'spotify_api': spotify_api
         }
         
         with self._alarms_lock:
@@ -443,6 +464,13 @@ class Alarm:
             logger.info(f"Alarm successfully scheduled for {time_str} on {self._format_days_display(active_days)}. Total alarms: {len(self.alarms)}")
 
         self._ensure_scheduler_running()
+        
+        # Initialize device wake manager if not already done
+        if self.device_wake_manager is None:
+            self.device_wake_manager = DeviceWakeManager(spotify_api, self.gui_app)
+        
+        # Schedule pre-wake for this alarm
+        self.device_wake_manager.schedule_pre_wake(time_str, alarm_id)
 
     def _validate_time_format(self, time_str):
         """
@@ -536,7 +564,7 @@ class Alarm:
         return ', '.join([abbrev.get(day, day) for day in days])
 
     def _conditional_play_playlist(self, playlist_uri, spotify_api, volume, playlist_name,
-                                    fade_in_enabled, fade_in_duration, active_days):
+                                    fade_in_enabled, fade_in_duration, active_days, alarm_id):
         """
         Conditionally play playlist based on active days.
 
@@ -550,11 +578,12 @@ class Alarm:
             fade_in_enabled: Whether to enable gradual volume fade-in.
             fade_in_duration: Fade-in duration in minutes.
             active_days: List of weekday names or None for all days.
+            alarm_id: Unique identifier for the alarm.
         """
         # If no specific days set, play every day
         if active_days is None:
             self.play_playlist(playlist_uri, spotify_api, volume, playlist_name,
-                             fade_in_enabled, fade_in_duration)
+                             fade_in_enabled, fade_in_duration, alarm_id)
             return
         
         # Check if today is in active days
@@ -564,7 +593,7 @@ class Alarm:
         if today_name in active_days:
             logger.info(f"Today ({today_name}) is in active days {active_days}, playing alarm")
             self.play_playlist(playlist_uri, spotify_api, volume, playlist_name,
-                             fade_in_enabled, fade_in_duration)
+                             fade_in_enabled, fade_in_duration, alarm_id)
         else:
             logger.info(f"Today ({today_name}) is not in active days {active_days}, skipping alarm")
 
@@ -721,7 +750,7 @@ class Alarm:
         self._save_snooze_state()
 
     def play_playlist(self, playlist_uri, spotify_api, volume=80, playlist_name='Playlist',
-                     fade_in_enabled=False, fade_in_duration=10):
+                     fade_in_enabled=False, fade_in_duration=10, alarm_id=None):
         """
         Play a playlist - called by scheduler when alarm triggers.
 
@@ -735,6 +764,7 @@ class Alarm:
             playlist_name: Name of playlist for notifications.
             fade_in_enabled: Whether to enable gradual volume fade-in.
             fade_in_duration: Fade-in duration in minutes.
+            alarm_id: Unique identifier for the alarm (optional).
         """
         logger.info(
             f"Alarm triggered - Playing playlist: {playlist_name} ({playlist_uri}) "
@@ -749,6 +779,7 @@ class Alarm:
 
         max_retries = 3
         base_delay = 2
+        playback_succeeded = False
 
         for attempt in range(max_retries):
             try:
@@ -780,6 +811,15 @@ class Alarm:
                 
                 self._show_notification('Alarm Success', success_msg, success=True, alarm_data=alarm_data)
                 logger.info(f"Successfully started playlist playback: {playlist_name}")
+                playback_succeeded = True
+                
+                # Start device health monitoring if alarm_id provided
+                if alarm_id and self.device_wake_manager:
+                    self.device_wake_manager.start_alarm_monitoring(
+                        alarm_id, playlist_uri, playlist_name, volume,
+                        spotify_api, fade_in_enabled, fade_in_duration
+                    )
+                
                 return
 
             except Exception as e:
@@ -794,6 +834,18 @@ class Alarm:
                     failure_msg = self._get_user_friendly_error(error_msg, playlist_name)
                     self._show_notification('Alarm Failed', failure_msg, success=False)
                     logger.error(f"Alarm failed after {max_retries} attempts: {failure_msg}")
+        
+        # If playback failed after all retries, show fallback notification via DeviceWakeManager
+        if not playback_succeeded and self.device_wake_manager:
+            alarm_data = {
+                'playlist_uri': playlist_uri,
+                'playlist_name': playlist_name,
+                'volume': volume,
+                'spotify_api': spotify_api,
+                'fade_in_enabled': fade_in_enabled,
+                'fade_in_duration': fade_in_duration
+            }
+            self.device_wake_manager._show_fallback_notification(alarm_data)
 
     def _wake_spotify_device(self, spotify_api):
         """
@@ -918,37 +970,37 @@ class Alarm:
         elif 'authentication' in error_lower or 'token' in error_lower or 'unauthorized' in error_lower:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                'ÔÜá Authentication expired.\n'
+                '⚠️ Authentication expired.\n'
                 'Please log in to Spotify again in the Alarmify app.'
             )
         elif 'premium' in error_lower or 'restriction' in error_lower:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                'ÔÜá Spotify Premium required.\n'
+                '⚠️ Spotify Premium required.\n'
                 'Playback control requires a Spotify Premium account.'
             )
         elif 'rate' in error_lower or 'limit' in error_lower or '429' in error_msg:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                'ÔÜá Rate limit exceeded.\n'
+                '⚠️ Rate limit exceeded.\n'
                 'Too many requests to Spotify. Wait a few minutes and try again.'
             )
         elif 'network' in error_lower or 'connection' in error_lower or 'timeout' in error_lower:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                'ÔÜá Network error.\n'
+                '⚠️ Network error.\n'
                 'Check your internet connection and try again.'
             )
         elif 'not found' in error_lower or '404' in error_msg:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                'ÔÜá Playlist not found.\n'
+                '⚠️ Playlist not found.\n'
                 'The playlist may have been deleted or made private.'
             )
         else:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
-                f'ÔÜá Error: {error_msg}\n\n'
+                f'⚠️ Error: {error_msg}\n\n'
                 'Check your Spotify connection and device status.'
             )
 
@@ -1046,6 +1098,13 @@ class Alarm:
         with self._alarms_lock:
             for alarm in self.alarms[:]:
                 if alarm['time'] == time_str:
+                    alarm_id = alarm.get('id')
+                    
+                    # Cancel pre-wake timer if exists
+                    if alarm_id and self.device_wake_manager:
+                        self.device_wake_manager.cancel_pre_wake(alarm_id)
+                        self.device_wake_manager.stop_alarm_monitoring(alarm_id)
+                    
                     schedule.cancel_job(alarm['job'])
                     self.alarms.remove(alarm)
                     logger.info(
@@ -1061,6 +1120,15 @@ class Alarm:
         logger.info("Clearing all alarms")
         with self._alarms_lock:
             alarm_count = len(self.alarms)
+            
+            # Cancel pre-wake timers and monitoring for all alarms
+            if self.device_wake_manager:
+                for alarm in self.alarms:
+                    alarm_id = alarm.get('id')
+                    if alarm_id:
+                        self.device_wake_manager.cancel_pre_wake(alarm_id)
+                        self.device_wake_manager.stop_alarm_monitoring(alarm_id)
+            
             for alarm in self.alarms:
                 schedule.cancel_job(alarm['job'])
             self.alarms.clear()
@@ -1084,9 +1152,13 @@ class Alarm:
         )
 
         from datetime import datetime, timedelta
+        import uuid
         
         snooze_time = datetime.now() + timedelta(minutes=snooze_minutes)
         time_str = snooze_time.strftime('%H:%M:%S')
+        
+        # Generate unique snooze ID
+        snooze_id = str(uuid.uuid4())
         
         # Schedule one-time job for snooze
         job = schedule.every().day.at(time_str).do(
@@ -1096,7 +1168,8 @@ class Alarm:
             alarm_data.get('volume', 80),
             alarm_data.get('playlist_name', 'Playlist'),
             alarm_data.get('fade_in_enabled', False),
-            alarm_data.get('fade_in_duration', 10)
+            alarm_data.get('fade_in_duration', 10),
+            snooze_id
         )
         
         # Track as snoozed alarm
@@ -1105,6 +1178,7 @@ class Alarm:
             'original_playlist': alarm_data.get('playlist_name'),
             'snooze_duration': snooze_minutes,
             'job': job,
+            'id': snooze_id,
             'playlist_uri': alarm_data.get('playlist_uri'),
             'volume': alarm_data.get('volume', 80),
             'fade_in_enabled': alarm_data.get('fade_in_enabled', False),
@@ -1120,6 +1194,12 @@ class Alarm:
         
         self._ensure_scheduler_running()
         self._save_snooze_state()
+        
+        # Schedule pre-wake for the snoozed alarm if device wake manager exists
+        if self.device_wake_manager:
+            # For snooze, schedule pre-wake based on snooze time
+            snooze_time_str = snooze_time.strftime('%H:%M')
+            self.device_wake_manager.schedule_pre_wake(snooze_time_str, snooze_id)
 
     def get_snoozed_alarms(self):
         """
@@ -1171,6 +1251,10 @@ class Alarm:
         
         # Save snooze state before shutdown
         self._save_snooze_state()
+        
+        # Shutdown device wake manager first
+        if self.device_wake_manager:
+            self.device_wake_manager.shutdown()
         
         if self.scheduler_running:
             self.scheduler_running = False
