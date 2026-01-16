@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 # Import PyQt5 for GUI
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtCore
 
 # Import existing backend
 from logging_config import setup_logging, get_logger
@@ -75,8 +75,8 @@ def main():
     
     try:
         # Enable High DPI support for Windows (Qt 5.14+)
-        QtWidgets.QApplication.setAttribute(QtWidgets.Qt.AA_EnableHighDpiScaling, True)
-        QtWidgets.QApplication.setAttribute(QtWidgets.Qt.AA_UseHighDpiPixmaps, True)
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+        QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
         
         app = QtWidgets.QApplication(sys.argv)
         app.setQuitOnLastWindowClosed(False)

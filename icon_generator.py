@@ -270,7 +270,7 @@ def generate_tray_icon(size=32, monochrome=False):
     painter.drawEllipse(QPointF(center, center), radius, radius)
     
     # Clock hands with improved proportions
-    pen.setWidth(max(2, size / 20))
+    pen.setWidth(int(max(2, size / 20)))
     painter.setPen(pen)
     
     # Hour hand (shorter, thicker)
@@ -281,7 +281,7 @@ def generate_tray_icon(size=32, monochrome=False):
     )
     
     # Minute hand (longer, thinner)
-    pen.setWidth(max(1.5, size / 24))
+    pen.setWidth(int(max(2, size / 24)))
     painter.setPen(pen)
     minute_length = radius * 0.7
     painter.drawLine(
