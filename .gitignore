@@ -70,3 +70,20 @@ cloud_data/
 .jwt_secret
 .device_id
 cloud_auth.json
+
+# Flutter / Mobile App
+mobile_app/.dart_tool/
+mobile_app/.flutter-plugins
+mobile_app/.flutter-plugins-dependencies
+mobile_app/.packages
+mobile_app/.pub-cache/
+mobile_app/.pub/
+mobile_app/build/
+mobile_app/ios/Pods/
+mobile_app/ios/.symlinks/
+mobile_app/android/.gradle/
+mobile_app/android/app/debug/
+mobile_app/android/app/profile/
+mobile_app/android/app/release/
+mobile_app/**/*.g.dart
+mobile_app/**/*.freezed.dart
