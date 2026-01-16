@@ -1880,7 +1880,20 @@ class TemplateManagerDialog(QDialog):
             self.table.setItem(row, 4, QTableWidgetItem(fade_text))
             
             days_display = self._format_days_display(template.days)
-            self.table.setItem(row, 5, QTableWidgetItem(days_display))
+            days_item = QTableWidgetItem(days_display)
+            
+            # Color code based on day pattern
+            days = template.days
+            if days is None or (days and len(days) == 7):
+                days_item.setForeground(QColor('#1DB954'))  # Green for every day
+            elif days and set(days) == {'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'}:
+                days_item.setForeground(QColor('#1E90FF'))  # Blue for weekdays
+            elif days and set(days) == {'Saturday', 'Sunday'}:
+                days_item.setForeground(QColor('#FFA500'))  # Orange for weekends
+            else:
+                days_item.setForeground(QColor('#B3B3B3'))  # Gray for custom
+            
+            self.table.setItem(row, 5, days_item)
             
             actions_widget = QWidget()
             actions_layout = QHBoxLayout(actions_widget)
@@ -2045,6 +2058,28 @@ class TemplateEditDialog(QDialog):
         days_label.setFont(QFont('Arial', 12, QFont.Bold))
         layout.addWidget(days_label)
         
+        # Quick select buttons
+        quick_select_layout = QHBoxLayout()
+        
+        btn_everyday = QPushButton('Every Day')
+        btn_everyday.clicked.connect(self._select_every_day)
+        btn_everyday.setStyleSheet('padding: 4px 12px;')
+        quick_select_layout.addWidget(btn_everyday)
+        
+        btn_weekdays = QPushButton('Weekdays')
+        btn_weekdays.clicked.connect(self._select_weekdays)
+        btn_weekdays.setStyleSheet('padding: 4px 12px;')
+        quick_select_layout.addWidget(btn_weekdays)
+        
+        btn_weekends = QPushButton('Weekends')
+        btn_weekends.clicked.connect(self._select_weekends)
+        btn_weekends.setStyleSheet('padding: 4px 12px;')
+        quick_select_layout.addWidget(btn_weekends)
+        
+        quick_select_layout.addStretch()
+        
+        layout.addLayout(quick_select_layout)
+        
         days_widget = QWidget()
         days_layout = QHBoxLayout(days_widget)
         days_layout.setSpacing(8)
@@ -2191,6 +2226,23 @@ class TemplateEditDialog(QDialog):
     def _on_fade_duration_changed(self, value):
         """Update fade duration label."""
         self.fade_duration_label.setText(f'{value} min')
+    
+    def _select_every_day(self):
+        """Select all days."""
+        for checkbox in self.day_checkboxes.values():
+            checkbox.setChecked(True)
+    
+    def _select_weekdays(self):
+        """Select weekdays (Mon-Fri)."""
+        weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+        for day, checkbox in self.day_checkboxes.items():
+            checkbox.setChecked(day in weekdays)
+    
+    def _select_weekends(self):
+        """Select weekends (Sat-Sun)."""
+        weekends = ['Saturday', 'Sunday']
+        for day, checkbox in self.day_checkboxes.items():
+            checkbox.setChecked(day in weekends)
     
     def _save_template(self):
         """Validate and save the template."""
@@ -2414,20 +2466,40 @@ class AlarmManagerDialog(QDialog):
         self.table.setRowCount(len(alarms))
 
         for row, alarm_info in enumerate(alarms):
-            self.table.setItem(row, 0, QTableWidgetItem(alarm_info.get('time', '')))
+            # Time
+            time_item = QTableWidgetItem(alarm_info.get('time', ''))
+            time_item.setFont(QFont('JetBrains Mono', 11, QFont.Bold))
+            self.table.setItem(row, 0, time_item)
+            
+            # Playlist
             self.table.setItem(row, 1, QTableWidgetItem(alarm_info.get('playlist', '')))
             
+            # Volume with fade-in info
             volume_text = f"{alarm_info.get('volume', 80)}%"
             if alarm_info.get('fade_in_enabled', False):
                 volume_text += f" (fade {alarm_info.get('fade_in_duration', 10)}min)"
             self.table.setItem(row, 2, QTableWidgetItem(volume_text))
 
-            # Display active days
+            # Display active days with formatting
             days = alarm_info.get('days')
             days_display = self._format_days_display_static(days)
-            self.table.setItem(row, 3, QTableWidgetItem(days_display))
+            days_item = QTableWidgetItem(days_display)
+            
+            # Color code based on day pattern
+            if days is None or (days and len(days) == 7):
+                days_item.setForeground(QColor('#1DB954'))  # Green for every day
+            elif days and set(days) == {'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'}:
+                days_item.setForeground(QColor('#1E90FF'))  # Blue for weekdays
+            elif days and set(days) == {'Saturday', 'Sunday'}:
+                days_item.setForeground(QColor('#FFA500'))  # Orange for weekends
+            else:
+                days_item.setForeground(QColor('#B3B3B3'))  # Gray for custom
+            
+            self.table.setItem(row, 3, days_item)
 
+            # Delete button
             btn_delete = QPushButton('Delete')
+            btn_delete.setStyleSheet('padding: 4px 12px; background-color: #c44; color: white; border-radius: 4px;')
             btn_delete.clicked.connect(lambda checked, r=row: self._delete_alarm(r))
             self.table.setCellWidget(row, 4, btn_delete)
 
