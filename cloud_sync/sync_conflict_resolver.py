@@ -236,8 +236,14 @@ class SyncConflictResolver:
         local = conflict['local'].copy()
         remote = conflict['remote']
         
-        # Use newest timestamp
+        # Use newest timestamp as base
         resolved = self._resolve_newest_wins(conflict).copy()
+        
+        # Validate that critical alarm fields are present
+        if 'time' in local or 'time' in remote:
+            if 'time' not in resolved or 'playlist_uri' not in resolved:
+                logger.warning("Merged alarm missing critical fields, using complete version")
+                resolved = local if ('time' in local and 'playlist_uri' in local) else remote
         
         # For specific fields, merge intelligently
         # Example: for alarm days, merge the day lists

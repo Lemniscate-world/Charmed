@@ -424,8 +424,13 @@ class CloudSyncDialog(QDialog):
     
     def _perform_sync(self, direction: str):
         """Perform synchronization in background thread."""
-        if self.sync_manager.sync_in_progress:
+        status = self.sync_manager.get_sync_status()
+        if status['sync_in_progress']:
             QMessageBox.warning(self, 'Sync In Progress', 'Synchronization already in progress')
+            return
+        
+        if not status['logged_in']:
+            QMessageBox.warning(self, 'Not Logged In', 'Please log in before syncing')
             return
         
         self.progress_bar.setRange(0, 0)
@@ -471,28 +476,37 @@ class CloudSyncDialog(QDialog):
     
     def _load_devices(self):
         """Load and display registered devices."""
-        devices = self.sync_manager.get_devices()
+        try:
+            devices = self.sync_manager.get_devices()
+            
+            if not devices:
+                self.devices_table.setRowCount(0)
+                return
+            
+            self.devices_table.setRowCount(len(devices))
+            
+            for row, device in enumerate(devices):
+                self.devices_table.setItem(row, 0, QTableWidgetItem(device.get('device_name', 'Unknown')))
+                self.devices_table.setItem(row, 1, QTableWidgetItem(device.get('device_type', 'Unknown')))
+                
+                last_sync = device.get('last_sync', 'Never')
+                if last_sync != 'Never':
+                    try:
+                        last_sync_dt = datetime.fromisoformat(last_sync)
+                        last_sync = last_sync_dt.strftime('%Y-%m-%d %H:%M')
+                    except Exception:
+                        pass
+                
+                self.devices_table.setItem(row, 2, QTableWidgetItem(last_sync))
+                
+                # Determine status
+                current_device = device.get('device_id') == self.sync_manager.device_id
+                status = 'This Device' if current_device else 'Other'
+                self.devices_table.setItem(row, 3, QTableWidgetItem(status))
         
-        self.devices_table.setRowCount(len(devices))
-        
-        for row, device in enumerate(devices):
-            self.devices_table.setItem(row, 0, QTableWidgetItem(device.get('device_name', 'Unknown')))
-            self.devices_table.setItem(row, 1, QTableWidgetItem(device.get('device_type', 'Unknown')))
-            
-            last_sync = device.get('last_sync', 'Never')
-            if last_sync != 'Never':
-                try:
-                    last_sync_dt = datetime.fromisoformat(last_sync)
-                    last_sync = last_sync_dt.strftime('%Y-%m-%d %H:%M')
-                except Exception:
-                    pass
-            
-            self.devices_table.setItem(row, 2, QTableWidgetItem(last_sync))
-            
-            # Determine status
-            current_device = device.get('device_id') == self.sync_manager.device_id
-            status = 'This Device' if current_device else 'Other'
-            self.devices_table.setItem(row, 3, QTableWidgetItem(status))
+        except Exception as e:
+            logger.error(f"Failed to load devices: {e}", exc_info=True)
+            QMessageBox.warning(self, 'Error', f'Failed to load devices: {str(e)}')
     
     def _handle_logout(self):
         """Handle logout."""

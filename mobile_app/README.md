@@ -2,6 +2,16 @@
 
 Mobile companion app for Alarmify desktop alarm clock. Wake up to your Spotify music with seamless cloud sync across all your devices.
 
+## ⚠️ Important: Integration Status
+
+This mobile app is in **foundation/MVP stage**. The cloud sync feature requires additional backend integration:
+
+- **Current State**: The desktop app uses file-based local storage for cloud sync simulation
+- **Mobile App Expects**: REST API backend for cloud synchronization
+- **Action Required**: Deploy a cloud backend or create a bridge server to enable full sync functionality
+
+See [SETUP_GUIDE.md](SETUP_GUIDE.md) for integration details.
+
 ## Features
 
 - **Alarm Management**: Create, edit, and delete alarms with full control

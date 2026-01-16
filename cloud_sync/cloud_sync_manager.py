@@ -62,7 +62,8 @@ class CloudSyncManager:
         self.auto_sync_enabled = False
         self.sync_interval_minutes = 30
         self.last_sync_time: Optional[datetime] = None
-        self.sync_in_progress = False
+        self._sync_in_progress = False
+        self._sync_lock = threading.Lock()
         
         # Threading
         self._sync_thread: Optional[threading.Thread] = None
@@ -73,6 +74,12 @@ class CloudSyncManager:
         self.on_sync_error: Optional[Callable] = None
         
         logger.info(f'CloudSyncManager initialized for device: {self.device_name} ({self.device_id})')
+    
+    @property
+    def sync_in_progress(self) -> bool:
+        """Thread-safe property to check if sync is in progress."""
+        with self._sync_lock:
+            return self._sync_in_progress
     
     def _get_or_create_device_id(self) -> str:
         """Get or create unique device ID."""
@@ -205,10 +212,10 @@ class CloudSyncManager:
         if not self.is_logged_in():
             return False, "Not logged in"
         
-        if self.sync_in_progress:
-            return False, "Sync already in progress"
-        
-        self.sync_in_progress = True
+        with self._sync_lock:
+            if self._sync_in_progress:
+                return False, "Sync already in progress"
+            self._sync_in_progress = True
         
         try:
             user = self.auth_manager.get_current_user()
@@ -272,7 +279,8 @@ class CloudSyncManager:
             return False, f"Sync failed: {str(e)}"
         
         finally:
-            self.sync_in_progress = False
+            with self._sync_lock:
+                self._sync_in_progress = False
     
     def sync_settings(self, direction: str = 'both') -> Tuple[bool, str]:
         """
@@ -287,10 +295,10 @@ class CloudSyncManager:
         if not self.is_logged_in():
             return False, "Not logged in"
         
-        if self.sync_in_progress:
-            return False, "Sync already in progress"
-        
-        self.sync_in_progress = True
+        with self._sync_lock:
+            if self._sync_in_progress:
+                return False, "Sync already in progress"
+            self._sync_in_progress = True
         
         try:
             user = self.auth_manager.get_current_user()
@@ -348,7 +356,8 @@ class CloudSyncManager:
             return False, f"Sync failed: {str(e)}"
         
         finally:
-            self.sync_in_progress = False
+            with self._sync_lock:
+                self._sync_in_progress = False
     
     def sync_all(self, direction: str = 'both') -> Tuple[bool, str, Dict]:
         """
@@ -492,10 +501,13 @@ class CloudSyncManager:
         Returns:
             Dictionary with sync status information
         """
+        with self._sync_lock:
+            sync_in_progress = self._sync_in_progress
+        
         return {
             'logged_in': self.is_logged_in(),
             'auto_sync_enabled': self.auto_sync_enabled,
-            'sync_in_progress': self.sync_in_progress,
+            'sync_in_progress': sync_in_progress,
             'last_sync_time': self.last_sync_time.isoformat() if self.last_sync_time else None,
             'device_id': self.device_id,
             'device_name': self.device_name
@@ -524,11 +536,27 @@ class CloudSyncManager:
             return
         
         try:
+            # Validate alarms before clearing existing ones
+            valid_alarms = []
+            for alarm in alarms:
+                time_str = alarm.get('time')
+                playlist_uri = alarm.get('playlist_uri')
+                
+                if time_str and playlist_uri:
+                    valid_alarms.append(alarm)
+                else:
+                    logger.warning(f"Skipping invalid alarm: {alarm}")
+            
+            if not valid_alarms:
+                logger.warning("No valid alarms to apply")
+                return
+            
             # Clear existing alarms
             self.alarm_manager.clear_all_alarms()
             
             # Add synced alarms
-            for alarm in alarms:
+            applied_count = 0
+            for alarm in valid_alarms:
                 # Extract alarm data
                 time_str = alarm.get('time')
                 playlist_name = alarm.get('playlist')
@@ -538,14 +566,15 @@ class CloudSyncManager:
                 fade_in_duration = alarm.get('fade_in_duration', 10)
                 days = alarm.get('days')
                 
-                if time_str and playlist_uri:
-                    # Need spotify_api - get from alarm_manager if available
-                    if hasattr(self.alarm_manager, 'spotify_api'):
-                        spotify_api = self.alarm_manager.spotify_api
-                    else:
-                        spotify_api = None
-                    
-                    if spotify_api:
+                # Need spotify_api - get from alarm_manager if available
+                if hasattr(self.alarm_manager, 'spotify_api'):
+                    spotify_api = self.alarm_manager.spotify_api
+                else:
+                    logger.warning("Alarm manager has no spotify_api attribute")
+                    continue
+                
+                if spotify_api:
+                    try:
                         self.alarm_manager.set_alarm(
                             time_str,
                             playlist_name or 'Synced Playlist',
@@ -556,8 +585,11 @@ class CloudSyncManager:
                             fade_in_duration,
                             days
                         )
+                        applied_count += 1
+                    except Exception as e:
+                        logger.error(f"Failed to apply alarm at {time_str}: {e}")
             
-            logger.info(f"Applied {len(alarms)} alarms from sync")
+            logger.info(f"Applied {applied_count} out of {len(valid_alarms)} valid alarms from sync")
         
         except Exception as e:
             logger.error(f"Failed to apply alarms: {e}", exc_info=True)

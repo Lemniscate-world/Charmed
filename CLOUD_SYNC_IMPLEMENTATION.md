@@ -189,6 +189,7 @@ sync_manager.stop_auto_sync()
 - bcrypt hashing with 12 rounds (highly secure)
 - Fallback to SHA-256 with salt if bcrypt unavailable
 - Password verification without exposure
+- Email validation with proper regex pattern
 
 ### Token Security
 - JWT tokens with expiration

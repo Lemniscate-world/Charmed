@@ -18,12 +18,12 @@ Security Features:
 import hashlib
 import secrets
 import json
-import time
 from pathlib import Path
 from typing import Optional, Dict, Tuple
 from datetime import datetime, timedelta
 import sys
 import os
+import re
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -87,7 +87,17 @@ class CloudAuthManager:
         logger.info(f'CloudAuthManager initialized with auth file: {self.auth_file}')
     
     def _load_or_generate_jwt_secret(self) -> str:
-        """Load JWT secret from file or generate a new one."""
+        """
+        Load JWT secret from file or generate a new one.
+        
+        The JWT secret is used to sign authentication tokens. It should be:
+        - Kept secure (file permissions 0o600)
+        - Not shared between installations (each installation gets unique secret)
+        - Persistent across app restarts (stored in ~/.alarmify/.jwt_secret)
+        
+        Note: In production, this would be a server-side secret stored securely.
+        For the file-based simulation, each user's installation has its own secret.
+        """
         secret_file = Path.home() / '.alarmify' / '.jwt_secret'
         
         if secret_file.exists():
@@ -97,14 +107,19 @@ class CloudAuthManager:
             except Exception as e:
                 logger.warning(f"Failed to load JWT secret: {e}, generating new one")
         
-        # Generate new secret
+        # Generate new secret (256 bits)
         secret = secrets.token_urlsafe(32)
         
         try:
             secret_file.parent.mkdir(parents=True, exist_ok=True)
             with open(secret_file, 'w') as f:
                 f.write(secret)
-            secret_file.chmod(0o600)  # Read/write for owner only
+            # Set restrictive permissions (Unix-like systems only)
+            try:
+                secret_file.chmod(0o600)  # Read/write for owner only
+            except (OSError, NotImplementedError):
+                # Windows doesn't support chmod in the same way
+                pass
             logger.info("Generated new JWT secret")
         except Exception as e:
             logger.error(f"Failed to save JWT secret: {e}")
@@ -272,8 +287,9 @@ class CloudAuthManager:
         Returns:
             Tuple of (success, message, user_id)
         """
-        # Validate email
-        if not email or '@' not in email:
+        # Validate email with proper regex
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not email or not re.match(email_pattern, email):
             return False, "Invalid email address", None
         
         # Validate password
@@ -369,11 +385,17 @@ class CloudAuthManager:
             Decoded token payload if valid, None otherwise
         """
         if not JWT_AVAILABLE:
-            # Fallback: Check if token format is valid
+            # Fallback: Check if token format is valid (simple verification)
+            # Format: user_id:random_token
             if ':' in token:
-                user_id = token.split(':')[0]
-                if user_id in self.users:
-                    return {'user_id': user_id}
+                try:
+                    user_id = token.split(':')[0]
+                    if user_id in self.users:
+                        # In fallback mode, we can't verify expiration
+                        # This is acceptable for local file-based simulation
+                        return {'user_id': user_id, 'fallback': True}
+                except Exception:
+                    pass
             return None
         
         try:

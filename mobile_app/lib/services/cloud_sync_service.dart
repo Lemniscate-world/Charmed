@@ -5,6 +5,11 @@
 /// - Alarm synchronization
 /// - Device management
 /// - Settings sync
+///
+/// NOTE: This implementation expects a REST API backend.
+/// The current desktop app uses file-based storage for cloud sync simulation.
+/// For production, this would connect to a proper cloud API service.
+/// For development/testing, a bridge server or mock API would be needed.
 
 import 'dart:convert';
 import 'dart:io';
