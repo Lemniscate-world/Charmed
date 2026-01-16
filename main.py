@@ -69,11 +69,15 @@ def is_first_run():
 
 def main():
     setup_logging()
-    logger.info('Starting Alarmify application')
+    logger.info('Starting Alarmify application with Charm UI design')
     
     sys.excepthook = exception_hook
     
     try:
+        # Enable High DPI support for Windows (Qt 5.14+)
+        QtWidgets.QApplication.setAttribute(QtWidgets.Qt.AA_EnableHighDpiScaling, True)
+        QtWidgets.QApplication.setAttribute(QtWidgets.Qt.AA_UseHighDpiPixmaps, True)
+        
         app = QtWidgets.QApplication(sys.argv)
         app.setQuitOnLastWindowClosed(False)
         
@@ -81,8 +85,13 @@ def main():
         app.setApplicationDisplayName('Alarmify - Spotify Alarm Clock')
         app.setOrganizationName('Alarmify')
         
+        # Set default font with proper fallback
         from PyQt5.QtGui import QFont
-        app.setFont(QFont('Inter', 10))
+        default_font = QFont('Inter', 10)
+        default_font.setStyleHint(QFont.SansSerif)
+        app.setFont(default_font)
+        
+        logger.info('High DPI scaling enabled for Windows compatibility')
         
         # Check if first run and show wizard
         if is_first_run():

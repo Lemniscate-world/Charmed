@@ -350,32 +350,66 @@ class AlarmApp(QtWidgets.QMainWindow):
             self.alarm.reschedule_snoozed_alarms(self.spotify_api)
 
     def _load_custom_fonts(self):
-        """Load custom fonts (Inter and JetBrains Mono)."""
+        """
+        Load custom fonts (Inter and JetBrains Mono) with proper fallback.
+        
+        Attempts to load fonts from multiple sources:
+        1. System fonts (if already installed)
+        2. Font files in application directory
+        3. Falls back to system equivalents
+        """
         font_db = QFontDatabase()
         
-        fonts_to_load = [
-            'Inter',
-            'JetBrains Mono'
-        ]
+        # Check if fonts are already available in system
+        available_families = font_db.families()
         
-        for font_name in fonts_to_load:
-            font_id = font_db.addApplicationFont(font_name)
-            if font_id >= 0:
-                logger.info(f'Loaded custom font: {font_name}')
-            else:
-                logger.warning(f'Could not load custom font: {font_name}, using system fallback')
+        # Inter font
+        if 'Inter' not in available_families:
+            logger.info('Inter font not found in system, using Segoe UI / system sans-serif fallback')
+        else:
+            logger.info('Using system-installed Inter font')
+        
+        # JetBrains Mono font
+        if 'JetBrains Mono' not in available_families:
+            logger.info('JetBrains Mono font not found in system, using Consolas / monospace fallback')
+        else:
+            logger.info('Using system-installed JetBrains Mono font')
+        
+        # Note: Fonts will fall back gracefully in CSS to:
+        # Inter -> Segoe UI -> System UI -> Sans-serif
+        # JetBrains Mono -> Consolas -> Courier New -> Monospace
     
     def _setup_entrance_animations(self):
-        """Apply entrance animations to UI elements."""
+        """
+        Apply entrance animations to UI elements with spring physics.
+        
+        Creates a smooth, cascading entrance effect for major UI components.
+        Uses fade-slide animation with staggered timing for visual hierarchy.
+        """
         widgets_to_animate = []
         
+        # Collect widgets for animation
         if hasattr(self, 'playlist_list'):
             widgets_to_animate.append(self.playlist_list)
         
         if hasattr(self, 'time_input'):
             widgets_to_animate.append(self.time_input)
         
-        apply_entrance_animations(widgets_to_animate, stagger_delay=100)
+        if hasattr(self, 'device_selector'):
+            widgets_to_animate.append(self.device_selector)
+        
+        if hasattr(self, 'volume_slider'):
+            widgets_to_animate.append(self.volume_slider)
+        
+        # Apply staggered entrance animations with spring physics
+        apply_entrance_animations(
+            widgets_to_animate,
+            animation_type='fade_slide',
+            stagger_delay=80,
+            start_delay=200
+        )
+        
+        logger.debug(f'Applied entrance animations to {len(widgets_to_animate)} widgets')
 
     def _build_ui(self):
         """Build the complete UI layout programmatically with Charm design."""

@@ -1,269 +1,445 @@
-# Charm Design Quick Start Guide
+# Charm UI Design - Quick Start Guide
 
-Quick reference for using the new Charm-inspired design system in Alarmify.
+## What is Charm UI Design?
 
-## Running the Application
+Alarmify features a modern, Charm-inspired user interface with:
+- ✨ **Glassmorphism effects** - Semi-transparent elements with depth
+- 🎯 **Spring-based animations** - Natural, physics-driven motion
+- 🎨 **Custom icons** - Beautiful SVG icons at any resolution
+- 📐 **Proper visual hierarchy** - Clear, organized layouts
+- 🖥️ **High DPI support** - Crystal clear on any screen
 
-The Charm design is automatically applied when you start Alarmify:
+## Visual Tour
 
-```bash
-python main.py
+### Main Window Features
+
+**1. App Icon**
+- Custom-designed clock with music note
+- Glassmorphic effects with gradients
+- Spotify green accent color (#1DB954)
+- Scales perfectly at any size (16px to 512px)
+
+**2. Playlist Browser**
+- Glass card effect with transparency
+- Smooth hover animations with lift effect
+- Cover art with rounded corners
+- Search with real-time filtering
+
+**3. Time Picker**
+- Large, monospace font (JetBrains Mono)
+- Glassmorphic background
+- Custom arrow buttons
+- Green accent on focus
+
+**4. Volume Slider**
+- Gradient-filled track
+- Interactive handle with hover growth
+- Smooth spring-based motion
+- Real-time visual feedback
+
+**5. Status Indicators**
+- Glass pill badges
+- Color-coded states (green = connected)
+- Subtle animations
+- Clear iconography
+
+## Animation System
+
+### Types of Animations
+
+**Entrance Animations**
+- Elements fade and slide in smoothly
+- Staggered timing for visual interest
+- 350ms duration with spring physics
+- Applied to all major UI components
+
+**Hover Effects**
+- Subtle lift (2-3px)
+- Brightness increase
+- Border glow
+- 150ms quick response
+
+**Button Press**
+- Visual feedback on click
+- Slight scale effect
+- Color darken on press
+- Instant response
+
+**Transitions**
+- Dialog fade-ins
+- Smooth theme switching
+- List item cascading
+- Page navigation
+
+### Spring Physics
+
+All animations use realistic spring physics:
+- **Tension:** 200 (spring stiffness)
+- **Friction:** 20 (damping)
+- **Mass:** 1.0 (weight)
+
+This creates natural, bouncy motion that feels responsive and alive.
+
+## Glassmorphism Explained
+
+### What is Glassmorphism?
+
+A design trend featuring:
+- Semi-transparent backgrounds
+- Subtle borders
+- Layered depth
+- Frosted glass appearance
+
+### How It's Applied
+
+**Input Fields:**
+```
+Background: Semi-transparent dark gradient
+Border: 2px with 15% opacity
+Border-radius: 8px for smooth corners
+Hover: Increased opacity and border glow
 ```
 
-## Generating Icons
-
-Icons are generated automatically on first use. To pre-generate all icons:
-
-```bash
-python icon_generator.py
+**Cards & Containers:**
+```
+Background: Layered gradient (darker to lighter)
+Border: Minimal, subtle glow
+Shadow: Soft, elevated appearance
+Content: High contrast for readability
 ```
 
-This creates:
-- `alarmify_icon_16.png` through `alarmify_icon_512.png`
-- `tray_icon_16.png`, `tray_icon_32.png`, `tray_icon_48.png`
-- `tray_icon_16_mono.png`, `tray_icon_32_mono.png`, `tray_icon_48_mono.png`
+**Buttons:**
+```
+Primary: Spotify green gradient
+Secondary: Glass effect with transparency
+Hover: Brighter, lifted appearance
+Press: Darker, grounded feel
+```
 
-## Using Stylesheets in New Components
+## Color System
+
+### Primary Colors
+
+- **Spotify Green:** `#1DB954`
+  - Main actions, accents, highlights
+  - Success states, confirmations
+  - Brand identity
+
+- **Lighter Green:** `#1ED760`
+  - Hover states
+  - Gradients (top stops)
+  - Bright accents
+
+- **Darker Green:** `#169C46`
+  - Pressed states
+  - Gradients (bottom stops)
+  - Depth
+
+### Background Colors
+
+- **Deep Black:** `#0a0a0a`
+  - Main background
+  - Maximum contrast
+
+- **Card Dark:** `rgba(36, 36, 36, 0.7)`
+  - Glassmorphic cards
+  - Elevated surfaces
+
+- **Hover Dark:** `rgba(52, 52, 52, 0.8)`
+  - Interactive states
+  - Emphasis layers
+
+### Text Colors
+
+- **Primary:** `#ffffff` - Headings, important text
+- **Secondary:** `#b3b3b3` - Body text, descriptions
+- **Tertiary:** `#666666` - Placeholders, hints
+
+### Accent Colors
+
+- **Gold:** `#FFD700` - Music note, special elements
+- **Blue:** `#1E90FF` - Information, links
+- **Orange:** `#FFA500` - Warnings
+- **Red:** `#FF6B6B` - Errors, destructive actions
+
+## Typography
+
+### Font Families
+
+**Inter (UI Font)**
+- Clean, modern sans-serif
+- Optimized for screens
+- Wide range of weights
+- Excellent readability
+
+**JetBrains Mono (Code Font)**
+- Monospace for time display
+- Clear character distinction
+- Coding-optimized
+- Large x-height
+
+### Font Fallbacks
+
+```
+Inter → Segoe UI → System UI → Sans-serif
+JetBrains Mono → Consolas → Courier New → Monospace
+```
+
+System fonts provide seamless fallback if custom fonts unavailable.
+
+### Font Sizes
+
+- **Logo:** 32px Bold
+- **Headers:** 18px Bold
+- **Body:** 14px Regular/Medium
+- **Small:** 12px Medium
+- **Time:** 32px Bold Mono
+- **Code:** 11px Mono
+
+## High DPI Support
+
+### What It Does
+
+Ensures crystal-clear rendering on:
+- 4K displays
+- High-resolution laptops
+- Modern desktop monitors
+- Different scaling settings (125%, 150%, 200%)
+
+### How It Works
 
 ```python
-from charm_stylesheet import get_stylesheet
-
-# In your widget's __init__ or setup method:
-stylesheet = get_stylesheet('dark')  # or 'light'
-self.setStyleSheet(stylesheet)
+# Automatic DPI detection and scaling
+QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
 ```
 
-## Adding Animations to Widgets
+**Result:**
+- Sharp text at any size
+- Crisp icons at all resolutions
+- Proper layout scaling
+- No blurry elements
 
-### Fade In Animation
-```python
-from charm_animations import AnimationBuilder
+## Theme System
 
-animation = AnimationBuilder.create_fade_in(my_widget, duration=300)
-animation.start()
-```
+### Dark Theme (Default)
 
-### Slide Up Animation
-```python
-animation = AnimationBuilder.create_slide_up(my_widget, distance=20, duration=300)
-animation.start()
-```
+**Optimized for:**
+- Low-light environments
+- Nighttime use
+- Reduced eye strain
+- Focus and concentration
 
-### Hover Effect
-```python
-from charm_animations import HoverAnimation
+**Features:**
+- Deep black backgrounds (#0a0a0a)
+- High contrast text
+- Subtle glassmorphism
+- Spotify green accents
 
-hover_anim = HoverAnimation(my_button)
-hover_anim.setup_hover_lift(lift_height=2)
+### Light Theme
 
-# In your button's enterEvent:
-def enterEvent(self, event):
-    self.hover_anim.on_hover_enter()
-    super().enterEvent(event)
+**Optimized for:**
+- Bright environments
+- Daytime use
+- Professional settings
+- Accessibility needs
 
-# In your button's leaveEvent:
-def leaveEvent(self, event):
-    self.hover_anim.on_hover_leave()
-    super().leaveEvent(event)
-```
+**Features:**
+- Clean white backgrounds
+- Clear text hierarchy
+- Maintained green accents
+- Readable in bright light
 
-### Staggered Entrance (Multiple Widgets)
-```python
-from charm_animations import apply_entrance_animations
+### Switching Themes
 
-widgets = [widget1, widget2, widget3, widget4]
-apply_entrance_animations(widgets, stagger_delay=50)
-```
+1. Click Settings button (⚙)
+2. Select theme preference
+3. Click "Save & Connect"
+4. Theme applies instantly
 
-## Creating Custom Icons
+## Customization Tips
 
-```python
-from icon_generator import generate_icon_image, generate_tray_icon
-from PyQt5.QtGui import QPixmap, QIcon
+### Adjusting Animation Speed
 
-# Application icon
-icon_image = generate_icon_image(size=256)
-pixmap = QPixmap.fromImage(icon_image)
-app_icon = QIcon(pixmap)
-window.setWindowIcon(app_icon)
+Animations are tuned for best experience but can be modified:
+- Faster: Reduce duration (200-250ms)
+- Slower: Increase duration (400-500ms)
+- Disable: Set duration to 0
 
-# System tray icon
-tray_image = generate_tray_icon(size=32, monochrome=False)
-tray_pixmap = QPixmap.fromImage(tray_image)
-tray_icon.setIcon(QIcon(tray_pixmap))
-```
+### Font Alternatives
 
-## Design System Reference
+If Inter/JetBrains Mono unavailable:
+- Windows: Uses Segoe UI / Consolas
+- Automatic fallback to system fonts
+- No manual configuration needed
 
-### Colors
-```python
-PRIMARY = "#1DB954"      # Spotify Green
-HOVER = "#1ED760"        # Bright Green  
-PRESSED = "#1AA34A"      # Dark Green
-BACKGROUND = "#0a0a0a"   # Near Black
-SURFACE = "#1a1a1a"      # Dark Gray
-TEXT_PRIMARY = "#ffffff"
-TEXT_SECONDARY = "#b3b3b3"
-```
+### DPI Scaling
 
-### Typography
-```python
-from PyQt5.QtGui import QFont
+Windows display settings:
+1. Right-click desktop → Display Settings
+2. Adjust "Scale and layout"
+3. Alarmify auto-adapts to changes
+4. Restart app if needed
 
-# UI Text
-font = QFont('Inter', 14)
+## Performance Tips
 
-# Headers
-header_font = QFont('Inter', 18, QFont.Bold)
+### Optimal Performance
 
-# Time Display
-time_font = QFont('JetBrains Mono', 32, QFont.Bold)
+**Do:**
+- Use recommended window size (1100x750+)
+- Keep GPU drivers updated
+- Enable hardware acceleration
+- Close unnecessary apps
 
-# Code/Logs
-code_font = QFont('JetBrains Mono', 11)
-```
+**Avoid:**
+- Extreme window resizing during animations
+- Running on very old hardware
+- Software rendering mode (if possible)
 
-### Spacing
-```python
-SPACING = {
-    'xs': 4,
-    'sm': 8,
-    'md': 12,
-    'lg': 16,
-    'xl': 24,
-    '2xl': 32
-}
-```
+### System Requirements
 
-### Border Radius
-```python
-RADIUS = {
-    'small': 6,    # inputs, tags
-    'medium': 8,   # buttons, cards
-    'large': 12,   # large cards
-    'xlarge': 20,  # primary buttons
-    'round': 500   # pill buttons
-}
-```
+**Minimum:**
+- Windows 7 SP1
+- 2GB RAM
+- Intel HD Graphics or equivalent
+- 1366x768 display
 
-## Common Glassmorphism Patterns
-
-### Glass Card
-```css
-background: rgba(26, 26, 26, 0.7);
-border: 1px solid rgba(255, 255, 255, 0.1);
-border-radius: 12px;
-```
-
-### Glass Input
-```css
-background: rgba(42, 42, 42, 0.7);
-border: 2px solid rgba(255, 255, 255, 0.2);
-border-radius: 8px;
-padding: 12px 16px;
-```
-
-### Glass Button (Hover)
-```css
-background: rgba(42, 42, 42, 0.9);
-border: 2px solid rgba(255, 255, 255, 0.3);
-```
-
-## Animation Timing Reference
-
-```python
-DURATIONS = {
-    'fast': 150,    # hover, small transitions
-    'medium': 300,  # standard transitions
-    'slow': 500     # page transitions
-}
-
-# Easing
-# Use QEasingCurve.OutExpo for spring-like deceleration
-# Use QEasingCurve.OutBack for slight overshoot
-```
-
-## Widget Styling Examples
-
-### Primary Button
-```python
-button = QPushButton("Click Me")
-button.setStyleSheet("""
-    QPushButton {
-        background-color: #1DB954;
-        color: #000000;
-        border: none;
-        border-radius: 500px;
-        padding: 12px 32px;
-        font-weight: 700;
-        font-size: 14px;
-    }
-    QPushButton:hover {
-        background-color: #1ED760;
-    }
-""")
-```
-
-### Glass Input Field
-```python
-line_edit = QLineEdit()
-line_edit.setStyleSheet("""
-    QLineEdit {
-        background: rgba(42, 42, 42, 0.7);
-        color: #ffffff;
-        border: 2px solid rgba(255, 255, 255, 0.2);
-        border-radius: 8px;
-        padding: 12px 16px;
-    }
-    QLineEdit:focus {
-        border: 2px solid #1DB954;
-        background: rgba(51, 51, 51, 0.8);
-    }
-""")
-```
-
-### Section Header
-```python
-header = QLabel("Section Title")
-header.setObjectName('sectionHeader')
-header.setFont(QFont('Inter', 18, QFont.Bold))
-# Styling applied automatically via stylesheet
-```
-
-## Tips
-
-1. **Always use objectName** for components you want to style specifically
-2. **Prefer stylesheet over inline styles** for consistency
-3. **Use animations sparingly** - not every interaction needs animation
-4. **Test both themes** (dark and light) when adding new components
-5. **Follow spacing system** - use predefined spacing values (8px base)
-6. **Check contrast** - ensure text is readable on glassmorphic backgrounds
+**Recommended:**
+- Windows 10/11
+- 4GB+ RAM
+- Dedicated GPU
+- 1920x1080+ display
 
 ## Troubleshooting
 
-### Fonts not appearing?
-The app falls back to system fonts automatically. Inter and JetBrains Mono are loaded if available, otherwise it uses Segoe UI or system defaults.
+### Fonts Not Loading
 
-### Animations not smooth?
-Ensure you're using QPropertyAnimation with appropriate easing curves (OutExpo recommended).
+**Symptom:** Default system fonts instead of Inter/JetBrains Mono
 
-### Icons not showing?
-Icons are generated at runtime. Check console for any error messages from icon_generator.py.
+**Solution:**
+- Fonts automatically fall back to system equivalents
+- Install fonts system-wide for best results
+- Check logs for font loading messages
 
-### Glassmorphism looks wrong?
-PyQt5 doesn't support true backdrop-filter. We use RGBA transparency which works well but requires proper layering.
+### Blurry Text/Icons
 
-## Resources
+**Symptom:** Fuzzy rendering at high DPI
 
-- **Full Design System**: See `DESIGN_SYSTEM.md`
-- **Icon Specifications**: See `ICON_DESIGN.md`
-- **Implementation Details**: See `CHARM_DESIGN_IMPLEMENTATION.md`
-- **Change Summary**: See `IMPLEMENTATION_SUMMARY.md`
+**Solution:**
+1. Verify Windows scaling settings
+2. Restart application
+3. Update display drivers
+4. Check DPI override in compatibility settings
+
+### Slow Animations
+
+**Symptom:** Choppy or laggy motion
+
+**Solution:**
+1. Close other applications
+2. Update graphics drivers
+3. Disable desktop effects (Windows 7)
+4. Reduce animation complexity (contact support)
+
+### Theme Not Applying
+
+**Symptom:** Theme changes don't take effect
+
+**Solution:**
+1. Save settings properly
+2. Restart application
+3. Check .env file permissions
+4. Reset to defaults if needed
+
+## Keyboard Shortcuts
+
+- **Settings:** Not assigned (click ⚙ button)
+- **Login:** Not assigned
+- **Set Alarm:** Enter (when dialog open)
+- **Close Dialog:** Escape
+
+## Accessibility
+
+### High Contrast
+
+- Clear text against backgrounds
+- Minimum 4.5:1 contrast ratio
+- Focus indicators on all elements
+- Keyboard navigation support
+
+### Large Text
+
+- Scalable with OS settings
+- Readable font choices
+- Adequate line spacing
+- No information in color alone
+
+### Screen Readers
+
+- Proper ARIA labels (where supported)
+- Logical tab order
+- Status announcements
+- Descriptive buttons
+
+## Best Practices
+
+### Daily Use
+
+1. **Keep window open:** Minimize to tray for quick access
+2. **Check status:** Green indicators = ready to alarm
+3. **Test alarms:** Use "Play Now" from playlist context menu
+4. **Monitor logs:** View Logs button for debugging
+
+### Visual Experience
+
+1. **Lighting:** Dark theme for dim rooms, light for bright
+2. **DPI:** Use native resolution for best clarity
+3. **Colors:** Spotify green indicates active/healthy states
+4. **Animations:** Smooth motion = healthy app performance
+
+### Performance
+
+1. **Memory:** Close other apps if sluggish
+2. **Updates:** Keep Windows and drivers current
+3. **Storage:** Ensure adequate disk space
+4. **Network:** Stable internet for Spotify connection
+
+## FAQ
+
+**Q: Why use glassmorphism?**
+A: Modern aesthetic, better visual hierarchy, reduces eye strain.
+
+**Q: Can I disable animations?**
+A: Not currently, but they're optimized to be fast and non-intrusive.
+
+**Q: Why spring physics?**
+A: Creates natural, realistic motion that feels responsive.
+
+**Q: What if my PC is slow?**
+A: Animations adapt, but consider closing other applications.
+
+**Q: Can I customize colors?**
+A: Theme selection available; full customization planned for future.
+
+**Q: Will this work on Linux/Mac?**
+A: Primarily Windows-focused but Qt5 provides cross-platform potential.
 
 ## Support
 
-For questions or issues with the Charm design system, refer to the documentation files or check the implementation in:
-- `charm_stylesheet.py` - Stylesheet definitions
-- `charm_animations.py` - Animation system
-- `icon_generator.py` - Icon generation
-- `gui.py` - Usage examples
+For issues or feedback:
+1. Check logs (View Logs button)
+2. Review CHARM_DESIGN_IMPLEMENTATION.md
+3. Open GitHub issue with details
+4. Include system specs and logs
+
+## Credits
+
+- **Design:** Inspired by Charm, Spotify, macOS Big Sur
+- **Icons:** Custom SVG with glassmorphism
+- **Animations:** Spring physics mathematics
+- **Colors:** Spotify brand guidelines
+- **Fonts:** Inter (UI), JetBrains Mono (code)
+
+---
+
+**Enjoy the beautiful Charm-inspired interface! 🎨✨**
