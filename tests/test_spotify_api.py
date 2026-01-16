@@ -588,6 +588,494 @@ class TestSpotifyAPIPagination:
                 assert [p['track_count'] for p in result] == [1, 2, 3]
 
 
+class TestRetryLogic:
+    """Tests for _retry_api_call method with rate limiting and transient failures."""
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    def test_retry_api_call_success_first_attempt(self, mock_spotify, mock_oauth):
+        """Should return result on first successful attempt."""
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                
+                mock_func = Mock(return_value={'result': 'success'})
+                result = api._retry_api_call(mock_func, 'arg1', kwarg1='value1')
+                
+                assert result == {'result': 'success'}
+                mock_func.assert_called_once_with('arg1', kwarg1='value1')
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.time.sleep')
+    def test_retry_api_call_rate_limit_429(self, mock_sleep, mock_spotify, mock_oauth):
+        """Should retry on 429 rate limit with exponential backoff."""
+        from spotipy.exceptions import SpotifyException
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                
+                call_count = 0
+                def mock_func():
+                    nonlocal call_count
+                    call_count += 1
+                    if call_count < 3:
+                        error = SpotifyException(429, 'rate limit', 'Rate limit exceeded')
+                        error.http_status = 429
+                        raise error
+                    return 'success'
+                
+                result = api._retry_api_call(mock_func)
+                
+                assert result == 'success'
+                assert call_count == 3
+                assert mock_sleep.call_count == 2
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.time.sleep')
+    def test_retry_api_call_retry_after_header(self, mock_sleep, mock_spotify, mock_oauth):
+        """Should respect Retry-After header on 429 errors."""
+        from spotipy.exceptions import SpotifyException
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                
+                call_count = 0
+                def mock_func():
+                    nonlocal call_count
+                    call_count += 1
+                    if call_count < 2:
+                        error = SpotifyException(429, 'rate limit', 'Rate limit exceeded')
+                        error.http_status = 429
+                        error.headers = {'Retry-After': '10'}
+                        raise error
+                    return 'success'
+                
+                result = api._retry_api_call(mock_func)
+                
+                assert result == 'success'
+                assert call_count == 2
+                # Should have waited 10 seconds (from Retry-After header)
+                mock_sleep.assert_called_with(10)
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.time.sleep')
+    def test_retry_api_call_server_error_5xx(self, mock_sleep, mock_spotify, mock_oauth):
+        """Should retry on 5xx server errors."""
+        from spotipy.exceptions import SpotifyException
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                
+                call_count = 0
+                def mock_func():
+                    nonlocal call_count
+                    call_count += 1
+                    if call_count < 2:
+                        error = SpotifyException(503, 'service unavailable', 'Service unavailable')
+                        error.http_status = 503
+                        raise error
+                    return 'recovered'
+                
+                result = api._retry_api_call(mock_func, max_retries=3)
+                
+                assert result == 'recovered'
+                assert call_count == 2
+                assert mock_sleep.call_count == 1
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    def test_retry_api_call_no_retry_on_4xx(self, mock_spotify, mock_oauth):
+        """Should not retry on 4xx client errors (except 429)."""
+        from spotipy.exceptions import SpotifyException
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                
+                call_count = 0
+                def mock_func():
+                    nonlocal call_count
+                    call_count += 1
+                    error = SpotifyException(404, 'not found', 'Resource not found')
+                    error.http_status = 404
+                    raise error
+                
+                with pytest.raises(SpotifyException) as exc_info:
+                    api._retry_api_call(mock_func, max_retries=3)
+                
+                assert exc_info.value.http_status == 404
+                assert call_count == 1  # Should only try once, no retries
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.time.sleep')
+    def test_retry_api_call_transient_network_error(self, mock_sleep, mock_spotify, mock_oauth):
+        """Should retry on transient network errors."""
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                
+                call_count = 0
+                def mock_func():
+                    nonlocal call_count
+                    call_count += 1
+                    if call_count < 3:
+                        raise ConnectionError("Network timeout")
+                    return 'success'
+                
+                result = api._retry_api_call(mock_func, max_retries=3)
+                
+                assert result == 'success'
+                assert call_count == 3
+                assert mock_sleep.call_count == 2
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.time.sleep')
+    def test_retry_api_call_max_retries_exceeded(self, mock_sleep, mock_spotify, mock_oauth):
+        """Should raise exception after max retries exceeded."""
+        from spotipy.exceptions import SpotifyException
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                
+                call_count = 0
+                def mock_func():
+                    nonlocal call_count
+                    call_count += 1
+                    error = SpotifyException(503, 'service unavailable', 'Persistent error')
+                    error.http_status = 503
+                    raise error
+                
+                with pytest.raises(SpotifyException) as exc_info:
+                    api._retry_api_call(mock_func, max_retries=3)
+                
+                assert call_count == 3  # Should try max_retries times
+                assert exc_info.value.http_status == 503
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.time.sleep')
+    def test_retry_api_call_exponential_backoff_delay(self, mock_sleep, mock_spotify, mock_oauth):
+        """Should use exponential backoff for retry delays."""
+        from spotipy.exceptions import SpotifyException
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                
+                call_count = 0
+                def mock_func():
+                    nonlocal call_count
+                    call_count += 1
+                    if call_count < 4:
+                        error = SpotifyException(500, 'server error', 'Server error')
+                        error.http_status = 500
+                        raise error
+                    return 'success'
+                
+                result = api._retry_api_call(mock_func, max_retries=4, retry_delay=1)
+                
+                assert result == 'success'
+                assert call_count == 4
+                
+                # Verify exponential backoff: delay * (attempt + 1)
+                # attempt 0 -> 1, attempt 1 -> 2, attempt 2 -> 3
+                expected_delays = [1, 2, 3]
+                actual_delays = [call.args[0] for call in mock_sleep.call_args_list]
+                assert actual_delays == expected_delays
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.time.sleep')
+    def test_retry_api_call_different_retry_delay(self, mock_sleep, mock_spotify, mock_oauth):
+        """Should accept custom retry_delay parameter."""
+        from spotipy.exceptions import SpotifyException
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                
+                call_count = 0
+                def mock_func():
+                    nonlocal call_count
+                    call_count += 1
+                    if call_count < 3:
+                        error = SpotifyException(500, 'server error', 'Server error')
+                        error.http_status = 500
+                        raise error
+                    return 'success'
+                
+                result = api._retry_api_call(mock_func, max_retries=3, retry_delay=2)
+                
+                assert result == 'success'
+                # With retry_delay=2: attempt 0 -> 2, attempt 1 -> 4
+                expected_delays = [2, 4]
+                actual_delays = [call.args[0] for call in mock_sleep.call_args_list]
+                assert actual_delays == expected_delays
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.time.sleep')
+    def test_retry_api_call_with_args_and_kwargs(self, mock_sleep, mock_spotify, mock_oauth):
+        """Should pass through args and kwargs to the function."""
+        from spotipy.exceptions import SpotifyException
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                
+                received_args = []
+                received_kwargs = []
+                call_count = 0
+                
+                def mock_func(*args, **kwargs):
+                    nonlocal call_count
+                    call_count += 1
+                    received_args.append(args)
+                    received_kwargs.append(kwargs)
+                    if call_count < 2:
+                        error = SpotifyException(500, 'server error', 'Server error')
+                        error.http_status = 500
+                        raise error
+                    return 'success'
+                
+                result = api._retry_api_call(mock_func, 'arg1', 'arg2', key1='value1', key2='value2')
+                
+                assert result == 'success'
+                assert call_count == 2
+                # Verify args and kwargs were passed correctly on both attempts
+                assert all(args == ('arg1', 'arg2') for args in received_args)
+                assert all(kwargs == {'key1': 'value1', 'key2': 'value2'} for kwargs in received_kwargs)
+
+
 class TestThreadSafeSpotifyAPIOperations:
     """Tests for ThreadSafeSpotifyAPI wrapper operations."""
     

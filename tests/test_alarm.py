@@ -353,6 +353,110 @@ class TestPlayPlaylist:
         
         assert call_count == 2
     
+    def test_play_playlist_exponential_backoff(self):
+        """play_playlist should use exponential backoff between retries."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        retry_times = []
+        call_count = 0
+        
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            retry_times.append(time.time())
+            if call_count < 3:
+                raise Exception("Transient error")
+        
+        mock_api.play_playlist_by_uri.side_effect = side_effect
+        
+        start_time = time.time()
+        alarm.play_playlist('spotify:playlist:backoff_test', mock_api, 80, 'Backoff Test')
+        
+        # Verify we had 3 attempts
+        assert call_count == 3
+        
+        # Verify exponential backoff timing
+        # First retry should wait ~2 seconds (2 * 2^0)
+        # Second retry should wait ~4 seconds (2 * 2^1)
+        if len(retry_times) >= 3:
+            delay1 = retry_times[1] - retry_times[0]
+            delay2 = retry_times[2] - retry_times[1]
+            
+            # Allow some tolerance for execution time
+            assert delay1 >= 1.8  # ~2 seconds
+            assert delay2 >= 3.8  # ~4 seconds
+            assert delay2 > delay1  # Second delay should be longer
+    
+    def test_play_playlist_max_retries(self):
+        """play_playlist should stop after max retries."""
+        alarm = Alarm()
+        mock_api = Mock()
+        mock_api.play_playlist_by_uri.side_effect = Exception("Persistent error")
+        
+        call_count = 0
+        def count_calls(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            raise Exception("Persistent error")
+        
+        mock_api.play_playlist_by_uri.side_effect = count_calls
+        
+        # Should fail after 3 attempts
+        alarm.play_playlist('spotify:playlist:fail', mock_api, 80, 'Fail')
+        
+        assert call_count == 3  # Should try exactly 3 times
+    
+    def test_play_playlist_different_errors(self):
+        """play_playlist should handle different types of errors during retries."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        errors = [
+            RuntimeError("Device not found"),
+            ConnectionError("Network timeout")
+        ]
+        
+        call_count = 0
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            if call_count < len(errors):
+                error = errors[call_count]
+                call_count += 1
+                raise error
+            call_count += 1
+        
+        mock_api.play_playlist_by_uri.side_effect = side_effect
+        
+        alarm.play_playlist('spotify:playlist:mixed_errors', mock_api, 80, 'Mixed Errors')
+        
+        # Should succeed after 2 failed attempts
+        assert call_count == 3
+    
+    def test_play_playlist_retry_preserves_parameters(self):
+        """play_playlist should preserve parameters across retry attempts."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        received_params = []
+        call_count = 0
+        
+        def track_params(uri):
+            nonlocal call_count
+            call_count += 1
+            received_params.append(uri)
+            if call_count < 2:
+                raise Exception("Retry error")
+        
+        mock_api.play_playlist_by_uri.side_effect = track_params
+        
+        test_uri = 'spotify:playlist:preserve_params'
+        alarm.play_playlist(test_uri, mock_api, 85, 'Preserve Test')
+        
+        # Both attempts should use same URI
+        assert len(received_params) == 2
+        assert all(uri == test_uri for uri in received_params)
+    
     def test_play_playlist_passes_uri_through_retries(self):
         """play_playlist should maintain URI consistency across retry attempts."""
         alarm = Alarm()
@@ -416,6 +520,46 @@ class TestTimeValidation:
         assert alarm._validate_time_format('invalid') is False
         assert alarm._validate_time_format('1:30') is False
         assert alarm._validate_time_format('12:5') is False
+    
+    def test_validate_time_format_edge_cases(self):
+        """Should handle edge case time formats."""
+        alarm = Alarm()
+        # Valid edge cases
+        assert alarm._validate_time_format('00:00') is True
+        assert alarm._validate_time_format('23:59') is True
+        
+        # Invalid edge cases
+        assert alarm._validate_time_format('24:00') is False
+        assert alarm._validate_time_format('23:60') is False
+        assert alarm._validate_time_format('-1:00') is False
+        assert alarm._validate_time_format('00:-1') is False
+    
+    def test_validate_time_format_malformed_strings(self):
+        """Should reject malformed time strings."""
+        alarm = Alarm()
+        assert alarm._validate_time_format('') is False
+        assert alarm._validate_time_format('12') is False
+        assert alarm._validate_time_format('12:') is False
+        assert alarm._validate_time_format(':30') is False
+        assert alarm._validate_time_format('12:30:00') is False
+        assert alarm._validate_time_format('12.30') is False
+        assert alarm._validate_time_format('12-30') is False
+    
+    def test_validate_time_format_non_numeric(self):
+        """Should reject non-numeric time values."""
+        alarm = Alarm()
+        assert alarm._validate_time_format('aa:bb') is False
+        assert alarm._validate_time_format('12:bb') is False
+        assert alarm._validate_time_format('aa:30') is False
+        assert alarm._validate_time_format('twelve:thirty') is False
+    
+    def test_validate_time_format_whitespace(self):
+        """Should reject time strings with whitespace."""
+        alarm = Alarm()
+        assert alarm._validate_time_format(' 12:30') is False
+        assert alarm._validate_time_format('12:30 ') is False
+        assert alarm._validate_time_format('12 :30') is False
+        assert alarm._validate_time_format('12: 30') is False
 
 
 class TestErrorMessages:
@@ -445,6 +589,71 @@ class TestErrorMessages:
         alarm = Alarm()
         msg = alarm._get_user_friendly_error('Rate limit exceeded', 'Test')
         assert 'Rate limit' in msg or 'rate' in msg.lower()
+    
+    def test_get_user_friendly_error_network(self):
+        """Should provide helpful message for network errors."""
+        alarm = Alarm()
+        msg = alarm._get_user_friendly_error('Network connection failed', 'Test Playlist')
+        assert 'Network error' in msg or 'network' in msg.lower()
+        assert 'Test Playlist' in msg
+    
+    def test_get_user_friendly_error_not_found(self):
+        """Should provide helpful message for playlist not found errors."""
+        alarm = Alarm()
+        msg = alarm._get_user_friendly_error('404 Not found', 'Deleted Playlist')
+        assert 'not found' in msg.lower()
+        assert 'Deleted Playlist' in msg
+    
+    def test_get_user_friendly_error_unauthorized(self):
+        """Should provide helpful message for unauthorized errors."""
+        alarm = Alarm()
+        msg = alarm._get_user_friendly_error('Unauthorized access', 'Playlist')
+        assert 'Authentication expired' in msg or 'authentication' in msg.lower()
+    
+    def test_get_user_friendly_error_timeout(self):
+        """Should provide helpful message for timeout errors."""
+        alarm = Alarm()
+        msg = alarm._get_user_friendly_error('Request timeout', 'Test Playlist')
+        assert 'Network error' in msg or 'timeout' in msg.lower()
+    
+    def test_get_user_friendly_error_premium_restriction(self):
+        """Should provide helpful message for premium restriction errors."""
+        alarm = Alarm()
+        msg = alarm._get_user_friendly_error('Restriction: premium_required', 'Test')
+        assert 'Premium' in msg or 'premium' in msg.lower()
+    
+    def test_get_user_friendly_error_429_rate_limit(self):
+        """Should detect rate limit from HTTP 429 status code."""
+        alarm = Alarm()
+        msg = alarm._get_user_friendly_error('HTTP 429 Too Many Requests', 'Test')
+        assert 'Rate limit' in msg or 'rate' in msg.lower()
+    
+    def test_get_user_friendly_error_generic(self):
+        """Should provide generic message for unknown errors."""
+        alarm = Alarm()
+        msg = alarm._get_user_friendly_error('Unknown error xyz123', 'Test Playlist')
+        assert 'Test Playlist' in msg
+        assert 'xyz123' in msg
+    
+    def test_get_user_friendly_error_empty_string(self):
+        """Should handle empty error message gracefully."""
+        alarm = Alarm()
+        msg = alarm._get_user_friendly_error('', 'Test Playlist')
+        assert 'Test Playlist' in msg
+    
+    def test_get_user_friendly_error_case_insensitive(self):
+        """Should match error patterns case-insensitively."""
+        alarm = Alarm()
+        
+        # Test various case combinations
+        msg1 = alarm._get_user_friendly_error('PREMIUM REQUIRED', 'Test')
+        assert 'Premium' in msg1
+        
+        msg2 = alarm._get_user_friendly_error('No Active Device', 'Test')
+        assert 'device' in msg2.lower()
+        
+        msg3 = alarm._get_user_friendly_error('RATE LIMIT', 'Test')
+        assert 'rate' in msg3.lower()
 
 
 class TestDayParsing:
