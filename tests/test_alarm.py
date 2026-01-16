@@ -1931,5 +1931,955 @@ class TestSnoozeLogic:
         assert snooze_2['snooze_duration'] == 10
 
 
+class TestAlarmHistory:
+    """Tests for AlarmHistory class."""
+    
+    def test_alarm_history_initialization(self, tmp_path):
+        """AlarmHistory should initialize with empty history."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        assert history.history_file == history_file
+        assert history.history == []
+    
+    def test_alarm_history_default_location(self):
+        """AlarmHistory should use default location if no file specified."""
+        from alarm import AlarmHistory
+        from pathlib import Path
+        
+        history = AlarmHistory()
+        
+        assert history.history_file is not None
+        assert history.history_file.parent == Path.home() / '.alarmify'
+    
+    def test_record_alarm_trigger_success(self, tmp_path):
+        """record_alarm_trigger should record successful alarm."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        alarm_data = {
+            'time': '07:00',
+            'playlist_name': 'Morning Mix',
+            'playlist_uri': 'spotify:playlist:morning',
+            'volume': 80,
+            'fade_in_enabled': False,
+            'fade_in_duration': 10
+        }
+        
+        history.record_alarm_trigger(alarm_data, success=True)
+        
+        assert len(history.history) == 1
+        entry = history.history[0]
+        assert entry['trigger_time'] == '07:00'
+        assert entry['playlist_name'] == 'Morning Mix'
+        assert entry['volume'] == 80
+        assert entry['success'] is True
+        assert entry['error_message'] is None
+        assert entry['snoozed'] is False
+        assert entry['snooze_count'] == 0
+        assert entry['dismissed'] is False
+    
+    def test_record_alarm_trigger_failure(self, tmp_path):
+        """record_alarm_trigger should record failed alarm with error."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        alarm_data = {
+            'time': '08:00',
+            'playlist_name': 'Failed Playlist',
+            'playlist_uri': 'spotify:playlist:fail',
+            'volume': 75
+        }
+        
+        history.record_alarm_trigger(alarm_data, success=False, error_message='No active device')
+        
+        assert len(history.history) == 1
+        entry = history.history[0]
+        assert entry['success'] is False
+        assert entry['error_message'] == 'No active device'
+    
+    def test_record_alarm_trigger_with_fade_in(self, tmp_path):
+        """record_alarm_trigger should record fade-in settings."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        alarm_data = {
+            'time': '06:30',
+            'playlist_name': 'Fade Test',
+            'playlist_uri': 'spotify:playlist:fade',
+            'volume': 85,
+            'fade_in_enabled': True,
+            'fade_in_duration': 20
+        }
+        
+        history.record_alarm_trigger(alarm_data, success=True)
+        
+        entry = history.history[0]
+        assert entry['fade_in_enabled'] is True
+        assert entry['fade_in_duration'] == 20
+    
+    def test_record_alarm_trigger_includes_timestamp(self, tmp_path):
+        """record_alarm_trigger should include ISO timestamp."""
+        from alarm import AlarmHistory
+        from datetime import datetime
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        alarm_data = {
+            'time': '07:00',
+            'playlist_name': 'Test',
+            'playlist_uri': 'spotify:playlist:test',
+            'volume': 80
+        }
+        
+        before = datetime.now()
+        history.record_alarm_trigger(alarm_data, success=True)
+        after = datetime.now()
+        
+        entry = history.history[0]
+        timestamp = datetime.fromisoformat(entry['timestamp'])
+        assert before <= timestamp <= after
+    
+    def test_record_alarm_trigger_includes_day_of_week(self, tmp_path):
+        """record_alarm_trigger should include day of week."""
+        from alarm import AlarmHistory
+        from datetime import datetime
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        alarm_data = {
+            'time': '07:00',
+            'playlist_name': 'Test',
+            'playlist_uri': 'spotify:playlist:test',
+            'volume': 80
+        }
+        
+        history.record_alarm_trigger(alarm_data, success=True)
+        
+        entry = history.history[0]
+        expected_day = datetime.now().strftime('%A')
+        assert entry['day_of_week'] == expected_day
+    
+    def test_record_snooze(self, tmp_path):
+        """record_snooze should update most recent alarm entry."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        alarm_data = {
+            'time': '07:00',
+            'playlist_name': 'Morning Mix',
+            'playlist_uri': 'spotify:playlist:morning',
+            'volume': 80
+        }
+        
+        history.record_alarm_trigger(alarm_data, success=True)
+        history.record_snooze(alarm_data, snooze_duration=5)
+        
+        entry = history.history[0]
+        assert entry['snoozed'] is True
+        assert entry['snooze_count'] == 1
+        assert entry['snooze_duration'] == 5
+    
+    def test_record_snooze_multiple_times(self, tmp_path):
+        """record_snooze should increment snooze count."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        alarm_data = {
+            'time': '07:00',
+            'playlist_name': 'Morning Mix',
+            'playlist_uri': 'spotify:playlist:morning',
+            'volume': 80
+        }
+        
+        history.record_alarm_trigger(alarm_data, success=True)
+        history.record_snooze(alarm_data, snooze_duration=5)
+        history.record_snooze(alarm_data, snooze_duration=10)
+        history.record_snooze(alarm_data, snooze_duration=15)
+        
+        entry = history.history[0]
+        assert entry['snooze_count'] == 3
+    
+    def test_record_snooze_no_history(self, tmp_path):
+        """record_snooze should handle empty history gracefully."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        alarm_data = {'playlist_name': 'Test'}
+        history.record_snooze(alarm_data, snooze_duration=5)
+        
+        # Should not crash
+        assert len(history.history) == 0
+    
+    def test_record_dismiss(self, tmp_path):
+        """record_dismiss should mark alarm as dismissed."""
+        from alarm import AlarmHistory
+        from datetime import datetime
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        alarm_data = {
+            'time': '07:00',
+            'playlist_name': 'Morning Mix',
+            'playlist_uri': 'spotify:playlist:morning',
+            'volume': 80
+        }
+        
+        history.record_alarm_trigger(alarm_data, success=True)
+        
+        before = datetime.now()
+        history.record_dismiss(alarm_data)
+        after = datetime.now()
+        
+        entry = history.history[0]
+        assert entry['dismissed'] is True
+        dismiss_time = datetime.fromisoformat(entry['dismiss_time'])
+        assert before <= dismiss_time <= after
+    
+    def test_record_dismiss_no_history(self, tmp_path):
+        """record_dismiss should handle empty history gracefully."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        alarm_data = {'playlist_name': 'Test'}
+        history.record_dismiss(alarm_data)
+        
+        # Should not crash
+        assert len(history.history) == 0
+    
+    def test_get_history_no_filters(self, tmp_path):
+        """get_history should return all entries when no filters applied."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Add multiple entries
+        for i in range(5):
+            alarm_data = {
+                'time': f'0{i+6}:00',
+                'playlist_name': f'Playlist {i}',
+                'playlist_uri': f'spotify:playlist:{i}',
+                'volume': 80
+            }
+            history.record_alarm_trigger(alarm_data, success=True)
+        
+        result = history.get_history()
+        assert len(result) == 5
+    
+    def test_get_history_sorted_descending(self, tmp_path):
+        """get_history should return entries sorted by timestamp descending."""
+        from alarm import AlarmHistory
+        import time
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Add entries with small delays
+        for i in range(3):
+            alarm_data = {
+                'time': f'0{i+6}:00',
+                'playlist_name': f'Playlist {i}',
+                'playlist_uri': f'spotify:playlist:{i}',
+                'volume': 80
+            }
+            history.record_alarm_trigger(alarm_data, success=True)
+            time.sleep(0.01)  # Small delay to ensure different timestamps
+        
+        result = history.get_history()
+        
+        # Most recent should be first
+        assert result[0]['playlist_name'] == 'Playlist 2'
+        assert result[1]['playlist_name'] == 'Playlist 1'
+        assert result[2]['playlist_name'] == 'Playlist 0'
+    
+    def test_get_history_with_limit(self, tmp_path):
+        """get_history should respect limit parameter."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        for i in range(10):
+            alarm_data = {
+                'time': f'0{i}:00',
+                'playlist_name': f'Playlist {i}',
+                'playlist_uri': f'spotify:playlist:{i}',
+                'volume': 80
+            }
+            history.record_alarm_trigger(alarm_data, success=True)
+        
+        result = history.get_history(limit=5)
+        assert len(result) == 5
+    
+    def test_get_history_with_start_date(self, tmp_path):
+        """get_history should filter by start date."""
+        from alarm import AlarmHistory
+        from datetime import datetime, timedelta
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Manually add entries with specific timestamps
+        now = datetime.now()
+        for days_ago in [30, 20, 10, 5, 1]:
+            entry = {
+                'timestamp': (now - timedelta(days=days_ago)).isoformat(),
+                'trigger_time': '07:00',
+                'playlist_name': f'Playlist {days_ago}d ago',
+                'playlist_uri': 'spotify:playlist:test',
+                'volume': 80,
+                'fade_in_enabled': False,
+                'fade_in_duration': 10,
+                'day_of_week': 'Monday',
+                'success': True,
+                'error_message': None,
+                'snoozed': False,
+                'snooze_count': 0,
+                'dismissed': False,
+                'dismiss_time': None
+            }
+            history.history.append(entry)
+        
+        # Filter to last 15 days
+        start_date = now - timedelta(days=15)
+        result = history.get_history(start_date=start_date)
+        
+        # Should only include entries from 10, 5, and 1 days ago
+        assert len(result) == 3
+    
+    def test_get_history_with_end_date(self, tmp_path):
+        """get_history should filter by end date."""
+        from alarm import AlarmHistory
+        from datetime import datetime, timedelta
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        now = datetime.now()
+        for days_ago in [30, 20, 10, 5, 1]:
+            entry = {
+                'timestamp': (now - timedelta(days=days_ago)).isoformat(),
+                'trigger_time': '07:00',
+                'playlist_name': f'Playlist {days_ago}d ago',
+                'playlist_uri': 'spotify:playlist:test',
+                'volume': 80,
+                'fade_in_enabled': False,
+                'fade_in_duration': 10,
+                'day_of_week': 'Monday',
+                'success': True,
+                'error_message': None,
+                'snoozed': False,
+                'snooze_count': 0,
+                'dismissed': False,
+                'dismiss_time': None
+            }
+            history.history.append(entry)
+        
+        # Filter to older than 7 days
+        end_date = now - timedelta(days=7)
+        result = history.get_history(end_date=end_date)
+        
+        # Should only include entries from 30, 20, and 10 days ago
+        assert len(result) == 3
+    
+    def test_get_history_with_date_range(self, tmp_path):
+        """get_history should filter by date range."""
+        from alarm import AlarmHistory
+        from datetime import datetime, timedelta
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        now = datetime.now()
+        for days_ago in [30, 20, 10, 5, 1]:
+            entry = {
+                'timestamp': (now - timedelta(days=days_ago)).isoformat(),
+                'trigger_time': '07:00',
+                'playlist_name': f'Playlist {days_ago}d ago',
+                'playlist_uri': 'spotify:playlist:test',
+                'volume': 80,
+                'fade_in_enabled': False,
+                'fade_in_duration': 10,
+                'day_of_week': 'Monday',
+                'success': True,
+                'error_message': None,
+                'snoozed': False,
+                'snooze_count': 0,
+                'dismissed': False,
+                'dismiss_time': None
+            }
+            history.history.append(entry)
+        
+        # Filter to 15-3 days ago
+        start_date = now - timedelta(days=15)
+        end_date = now - timedelta(days=3)
+        result = history.get_history(start_date=start_date, end_date=end_date)
+        
+        # Should only include entries from 10 and 5 days ago
+        assert len(result) == 2
+    
+    def test_get_statistics_empty_history(self, tmp_path):
+        """get_statistics should return zero values for empty history."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        stats = history.get_statistics()
+        
+        assert stats['total_alarms'] == 0
+        assert stats['success_rate'] == 0.0
+        assert stats['failure_count'] == 0
+        assert stats['avg_snooze_count'] == 0.0
+        assert stats['total_snoozes'] == 0
+        assert stats['most_snoozed_time'] is None
+        assert stats['most_successful_time'] is None
+        assert stats['wake_patterns'] == {}
+        assert stats['day_distribution'] == {}
+        assert stats['favorite_playlists'] == {}
+        assert stats['fade_in_usage'] == 0.0
+    
+    def test_get_statistics_success_rate(self, tmp_path):
+        """get_statistics should calculate success rate correctly."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Add 7 successful and 3 failed alarms
+        for i in range(7):
+            alarm_data = {
+                'time': '07:00',
+                'playlist_name': 'Success',
+                'playlist_uri': 'spotify:playlist:success',
+                'volume': 80
+            }
+            history.record_alarm_trigger(alarm_data, success=True)
+        
+        for i in range(3):
+            alarm_data = {
+                'time': '08:00',
+                'playlist_name': 'Fail',
+                'playlist_uri': 'spotify:playlist:fail',
+                'volume': 80
+            }
+            history.record_alarm_trigger(alarm_data, success=False, error_message='Error')
+        
+        stats = history.get_statistics()
+        
+        assert stats['total_alarms'] == 10
+        assert stats['success_rate'] == 70.0  # 7/10 * 100
+        assert stats['failure_count'] == 3
+    
+    def test_get_statistics_snooze_patterns(self, tmp_path):
+        """get_statistics should calculate snooze statistics."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Add alarms with different snooze counts
+        for snooze_count in [0, 1, 2, 3, 4]:
+            alarm_data = {
+                'time': '07:00',
+                'playlist_name': 'Test',
+                'playlist_uri': 'spotify:playlist:test',
+                'volume': 80
+            }
+            history.record_alarm_trigger(alarm_data, success=True)
+            
+            # Snooze the alarm multiple times
+            for _ in range(snooze_count):
+                history.record_snooze(alarm_data, snooze_duration=5)
+        
+        stats = history.get_statistics()
+        
+        # Total snoozes: 0 + 1 + 2 + 3 + 4 = 10
+        # Average: 10 / 5 = 2.0
+        assert stats['total_snoozes'] == 10
+        assert stats['avg_snooze_count'] == 2.0
+    
+    def test_get_statistics_wake_patterns(self, tmp_path):
+        """get_statistics should track wake patterns by hour."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Add alarms at different times
+        times = ['06:00', '06:30', '07:00', '07:15', '08:00']
+        for time_str in times:
+            alarm_data = {
+                'time': time_str,
+                'playlist_name': 'Test',
+                'playlist_uri': 'spotify:playlist:test',
+                'volume': 80
+            }
+            history.record_alarm_trigger(alarm_data, success=True)
+        
+        stats = history.get_statistics()
+        
+        # Should group by hour
+        assert stats['wake_patterns']['06'] == 2
+        assert stats['wake_patterns']['07'] == 2
+        assert stats['wake_patterns']['08'] == 1
+    
+    def test_get_statistics_day_distribution(self, tmp_path):
+        """get_statistics should track day distribution."""
+        from alarm import AlarmHistory
+        from datetime import datetime
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Add alarms
+        for i in range(5):
+            alarm_data = {
+                'time': '07:00',
+                'playlist_name': 'Test',
+                'playlist_uri': 'spotify:playlist:test',
+                'volume': 80
+            }
+            history.record_alarm_trigger(alarm_data, success=True)
+        
+        stats = history.get_statistics()
+        
+        # All alarms should be on today
+        today = datetime.now().strftime('%A')
+        assert stats['day_distribution'][today] == 5
+    
+    def test_get_statistics_favorite_playlists(self, tmp_path):
+        """get_statistics should identify favorite playlists."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Add alarms with different playlists
+        playlists = [
+            ('Morning Mix', 5),
+            ('Workout', 3),
+            ('Chill', 2),
+            ('Rock', 1),
+            ('Jazz', 1)
+        ]
+        
+        for playlist_name, count in playlists:
+            for _ in range(count):
+                alarm_data = {
+                    'time': '07:00',
+                    'playlist_name': playlist_name,
+                    'playlist_uri': f'spotify:playlist:{playlist_name.lower()}',
+                    'volume': 80
+                }
+                history.record_alarm_trigger(alarm_data, success=True)
+        
+        stats = history.get_statistics()
+        
+        # Should return top 5 playlists sorted by count
+        assert 'Morning Mix' in stats['favorite_playlists']
+        assert stats['favorite_playlists']['Morning Mix'] == 5
+        assert 'Workout' in stats['favorite_playlists']
+        assert stats['favorite_playlists']['Workout'] == 3
+    
+    def test_get_statistics_fade_in_usage(self, tmp_path):
+        """get_statistics should calculate fade-in usage percentage."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Add 3 alarms with fade-in and 7 without
+        for i in range(3):
+            alarm_data = {
+                'time': '07:00',
+                'playlist_name': 'Fade',
+                'playlist_uri': 'spotify:playlist:fade',
+                'volume': 80,
+                'fade_in_enabled': True,
+                'fade_in_duration': 15
+            }
+            history.record_alarm_trigger(alarm_data, success=True)
+        
+        for i in range(7):
+            alarm_data = {
+                'time': '08:00',
+                'playlist_name': 'No Fade',
+                'playlist_uri': 'spotify:playlist:nofade',
+                'volume': 80,
+                'fade_in_enabled': False,
+                'fade_in_duration': 10
+            }
+            history.record_alarm_trigger(alarm_data, success=True)
+        
+        stats = history.get_statistics()
+        
+        # 3/10 * 100 = 30%
+        assert stats['fade_in_usage'] == 30.0
+    
+    def test_get_statistics_most_snoozed_time(self, tmp_path):
+        """get_statistics should identify most snoozed time."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Add alarms at different times with different snooze counts
+        alarm_data_1 = {
+            'time': '06:00',
+            'playlist_name': 'Early',
+            'playlist_uri': 'spotify:playlist:early',
+            'volume': 80
+        }
+        history.record_alarm_trigger(alarm_data_1, success=True)
+        history.record_snooze(alarm_data_1, 5)
+        history.record_snooze(alarm_data_1, 5)
+        history.record_snooze(alarm_data_1, 5)  # 3 snoozes
+        
+        alarm_data_2 = {
+            'time': '07:00',
+            'playlist_name': 'Normal',
+            'playlist_uri': 'spotify:playlist:normal',
+            'volume': 80
+        }
+        history.record_alarm_trigger(alarm_data_2, success=True)
+        history.record_snooze(alarm_data_2, 5)  # 1 snooze
+        
+        alarm_data_3 = {
+            'time': '08:00',
+            'playlist_name': 'Late',
+            'playlist_uri': 'spotify:playlist:late',
+            'volume': 80
+        }
+        history.record_alarm_trigger(alarm_data_3, success=True)  # 0 snoozes
+        
+        stats = history.get_statistics()
+        
+        assert stats['most_snoozed_time'] == '06:00'
+    
+    def test_get_statistics_most_successful_time(self, tmp_path):
+        """get_statistics should identify most successful time (least snoozes)."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Add alarms at different times with different snooze patterns
+        alarm_data_1 = {
+            'time': '06:00',
+            'playlist_name': 'Early',
+            'playlist_uri': 'spotify:playlist:early',
+            'volume': 80
+        }
+        history.record_alarm_trigger(alarm_data_1, success=True)
+        history.record_snooze(alarm_data_1, 5)
+        history.record_snooze(alarm_data_1, 5)  # 2 snoozes
+        
+        alarm_data_2 = {
+            'time': '07:00',
+            'playlist_name': 'Normal',
+            'playlist_uri': 'spotify:playlist:normal',
+            'volume': 80
+        }
+        history.record_alarm_trigger(alarm_data_2, success=True)  # 0 snoozes (best)
+        
+        alarm_data_3 = {
+            'time': '08:00',
+            'playlist_name': 'Late',
+            'playlist_uri': 'spotify:playlist:late',
+            'volume': 80
+        }
+        history.record_alarm_trigger(alarm_data_3, success=True)
+        history.record_snooze(alarm_data_3, 5)  # 1 snooze
+        
+        stats = history.get_statistics()
+        
+        assert stats['most_successful_time'] == '07:00'
+    
+    def test_get_statistics_with_days_parameter(self, tmp_path):
+        """get_statistics should respect days parameter."""
+        from alarm import AlarmHistory
+        from datetime import datetime, timedelta
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Manually add entries from different time periods
+        now = datetime.now()
+        
+        # Add 3 recent alarms (within 7 days)
+        for i in range(3):
+            entry = {
+                'timestamp': (now - timedelta(days=i)).isoformat(),
+                'trigger_time': '07:00',
+                'playlist_name': 'Recent',
+                'playlist_uri': 'spotify:playlist:recent',
+                'volume': 80,
+                'fade_in_enabled': False,
+                'fade_in_duration': 10,
+                'day_of_week': 'Monday',
+                'success': True,
+                'error_message': None,
+                'snoozed': False,
+                'snooze_count': 0,
+                'dismissed': False,
+                'dismiss_time': None
+            }
+            history.history.append(entry)
+        
+        # Add 2 old alarms (older than 7 days)
+        for i in range(2):
+            entry = {
+                'timestamp': (now - timedelta(days=10 + i)).isoformat(),
+                'trigger_time': '07:00',
+                'playlist_name': 'Old',
+                'playlist_uri': 'spotify:playlist:old',
+                'volume': 80,
+                'fade_in_enabled': False,
+                'fade_in_duration': 10,
+                'day_of_week': 'Monday',
+                'success': True,
+                'error_message': None,
+                'snoozed': False,
+                'snooze_count': 0,
+                'dismissed': False,
+                'dismiss_time': None
+            }
+            history.history.append(entry)
+        
+        # Get stats for last 7 days
+        stats = history.get_statistics(days=7)
+        
+        # Should only count recent alarms
+        assert stats['total_alarms'] == 3
+    
+    def test_export_to_csv(self, tmp_path):
+        """export_to_csv should export history to CSV file."""
+        from alarm import AlarmHistory
+        import csv
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Add some history
+        for i in range(3):
+            alarm_data = {
+                'time': f'0{i+6}:00',
+                'playlist_name': f'Playlist {i}',
+                'playlist_uri': f'spotify:playlist:{i}',
+                'volume': 80
+            }
+            history.record_alarm_trigger(alarm_data, success=True)
+        
+        csv_file = tmp_path / 'export.csv'
+        success = history.export_to_csv(csv_file)
+        
+        assert success is True
+        assert csv_file.exists()
+        
+        # Verify CSV contents
+        with open(csv_file, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+            assert len(rows) == 3
+    
+    def test_export_to_csv_empty_history(self, tmp_path):
+        """export_to_csv should handle empty history."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        csv_file = tmp_path / 'empty.csv'
+        success = history.export_to_csv(csv_file)
+        
+        assert success is True
+    
+    def test_export_to_json(self, tmp_path):
+        """export_to_json should export history to JSON file."""
+        from alarm import AlarmHistory
+        import json
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Add some history
+        for i in range(3):
+            alarm_data = {
+                'time': f'0{i+6}:00',
+                'playlist_name': f'Playlist {i}',
+                'playlist_uri': f'spotify:playlist:{i}',
+                'volume': 80
+            }
+            history.record_alarm_trigger(alarm_data, success=True)
+        
+        json_file = tmp_path / 'export.json'
+        success = history.export_to_json(json_file)
+        
+        assert success is True
+        assert json_file.exists()
+        
+        # Verify JSON contents
+        with open(json_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            assert 'history' in data
+            assert len(data['history']) == 3
+    
+    def test_export_to_json_empty_history(self, tmp_path):
+        """export_to_json should handle empty history."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        json_file = tmp_path / 'empty.json'
+        success = history.export_to_json(json_file)
+        
+        assert success is True
+    
+    def test_clear_history(self, tmp_path):
+        """clear_history should remove all entries."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Add some history
+        for i in range(5):
+            alarm_data = {
+                'time': '07:00',
+                'playlist_name': 'Test',
+                'playlist_uri': 'spotify:playlist:test',
+                'volume': 80
+            }
+            history.record_alarm_trigger(alarm_data, success=True)
+        
+        assert len(history.history) == 5
+        
+        history.clear_history()
+        
+        assert len(history.history) == 0
+    
+    def test_clear_old_entries(self, tmp_path):
+        """clear_old_entries should remove entries older than specified days."""
+        from alarm import AlarmHistory
+        from datetime import datetime, timedelta
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        now = datetime.now()
+        
+        # Add recent entries (5 days old)
+        for i in range(3):
+            entry = {
+                'timestamp': (now - timedelta(days=5)).isoformat(),
+                'trigger_time': '07:00',
+                'playlist_name': 'Recent',
+                'playlist_uri': 'spotify:playlist:recent',
+                'volume': 80,
+                'fade_in_enabled': False,
+                'fade_in_duration': 10,
+                'day_of_week': 'Monday',
+                'success': True,
+                'error_message': None,
+                'snoozed': False,
+                'snooze_count': 0,
+                'dismissed': False,
+                'dismiss_time': None
+            }
+            history.history.append(entry)
+        
+        # Add old entries (100 days old)
+        for i in range(2):
+            entry = {
+                'timestamp': (now - timedelta(days=100)).isoformat(),
+                'trigger_time': '07:00',
+                'playlist_name': 'Old',
+                'playlist_uri': 'spotify:playlist:old',
+                'volume': 80,
+                'fade_in_enabled': False,
+                'fade_in_duration': 10,
+                'day_of_week': 'Monday',
+                'success': True,
+                'error_message': None,
+                'snoozed': False,
+                'snooze_count': 0,
+                'dismissed': False,
+                'dismiss_time': None
+            }
+            history.history.append(entry)
+        
+        assert len(history.history) == 5
+        
+        # Clear entries older than 30 days
+        history.clear_old_entries(days=30)
+        
+        # Should only keep the 3 recent entries
+        assert len(history.history) == 3
+    
+    def test_persistence_save_and_load(self, tmp_path):
+        """History should persist to file and reload correctly."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'persist_test.json'
+        
+        # Create history and add entries
+        history1 = AlarmHistory(history_file)
+        for i in range(3):
+            alarm_data = {
+                'time': f'0{i+6}:00',
+                'playlist_name': f'Playlist {i}',
+                'playlist_uri': f'spotify:playlist:{i}',
+                'volume': 80
+            }
+            history1.record_alarm_trigger(alarm_data, success=True)
+        
+        # Create new instance and verify data loaded
+        history2 = AlarmHistory(history_file)
+        assert len(history2.history) == 3
+        assert history2.history[0]['playlist_name'] == 'Playlist 0'
+    
+    def test_record_alarm_trigger_with_trigger_time_key(self, tmp_path):
+        """record_alarm_trigger should handle both 'time' and 'trigger_time' keys."""
+        from alarm import AlarmHistory
+        
+        history_file = tmp_path / 'test_history.json'
+        history = AlarmHistory(history_file)
+        
+        # Test with 'trigger_time' key
+        alarm_data = {
+            'trigger_time': '09:30',
+            'playlist_name': 'Test',
+            'playlist_uri': 'spotify:playlist:test',
+            'volume': 80
+        }
+        
+        history.record_alarm_trigger(alarm_data, success=True)
+        
+        entry = history.history[0]
+        assert entry['trigger_time'] == '09:30'
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
