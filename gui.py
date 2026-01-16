@@ -66,6 +66,8 @@ from logging_config import get_logger, get_log_files, read_log_file, get_current
 from charm_stylesheet import get_stylesheet
 from charm_animations import AnimationBuilder, apply_entrance_animations
 from icon_generator import generate_icon_image, generate_tray_icon
+from cloud_sync.cloud_sync_manager import CloudSyncManager  # Cloud synchronization
+from cloud_sync_gui import CloudSyncDialog, CloudLoginDialog  # Cloud sync UI
 
 logger = get_logger(__name__)
 
@@ -312,6 +314,7 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         self.alarm = Alarm(self)
         self.template_manager = TemplateManager()
+        self.cloud_sync_manager = CloudSyncManager(alarm_manager=self.alarm)
 
         self.login_button.clicked.connect(self.login_to_spotify)
         self.set_alarm_button.clicked.connect(self.set_alarm)
@@ -321,6 +324,7 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.manage_templates_button.clicked.connect(self.open_template_manager)
         self.view_history_button.clicked.connect(self.open_history_stats)
         self.quick_setup_button.clicked.connect(self.quick_setup_from_template)
+        self.cloud_sync_button.clicked.connect(self.open_cloud_sync)
         self.device_selector.currentIndexChanged.connect(self._on_device_changed)
         self.refresh_devices_button.clicked.connect(self._refresh_devices)
         self.playlist_search.textChanged.connect(self._filter_playlists)
@@ -625,6 +629,11 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.view_logs_button = QPushButton('View Logs')
         self.view_logs_button.setObjectName('viewLogsButton')
         button_layout.addWidget(self.view_logs_button)
+
+        self.cloud_sync_button = QPushButton('☁ Cloud Sync')
+        self.cloud_sync_button.setObjectName('cloudSyncButton')
+        self.cloud_sync_button.setToolTip('Sync alarms and settings across devices')
+        button_layout.addWidget(self.cloud_sync_button)
 
         right_panel.addLayout(button_layout)
 
@@ -1146,6 +1155,21 @@ class AlarmApp(QtWidgets.QMainWindow):
         """Open the template manager dialog."""
         logger.info('Opening template manager')
         dlg = TemplateManagerDialog(self.template_manager, self)
+        dlg.exec_()
+    
+    def open_cloud_sync(self):
+        """Open the cloud sync dialog."""
+        logger.info('Opening cloud sync')
+        
+        # Check if user is logged in
+        if not self.cloud_sync_manager.is_logged_in():
+            # Show login dialog
+            login_dlg = CloudLoginDialog(self.cloud_sync_manager, self)
+            if login_dlg.exec_() != QDialog.Accepted:
+                return
+        
+        # Show cloud sync dialog
+        dlg = CloudSyncDialog(self.cloud_sync_manager, self)
         dlg.exec_()
 
     def quick_setup_from_template(self):

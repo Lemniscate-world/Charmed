@@ -62,3 +62,11 @@ tray_icon_*.png
 
 # User alarm templates
 alarm_templates.json
+
+# Cloud sync data (user-specific data should not be committed)
+# Generated in user's home directory ~/.alarmify/
+# But also ignore if created in project directory
+cloud_data/
+.jwt_secret
+.device_id
+cloud_auth.json
