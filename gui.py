@@ -61,7 +61,7 @@ import sys
 
 # Local module imports
 from spotify_api.spotify_api import ThreadSafeSpotifyAPI  # Thread-safe Spotify API wrapper
-from alarm import Alarm, AlarmTemplate, TemplateManager  # Alarm scheduling and templates
+from alarm import Alarm, AlarmTemplate, TemplateManager, AlarmHistory  # Alarm scheduling and templates
 from logging_config import get_logger, get_log_files, read_log_file, get_current_log_file
 from charm_stylesheet import get_stylesheet
 from charm_animations import AnimationBuilder, apply_entrance_animations
@@ -319,6 +319,7 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.manage_alarms_button.clicked.connect(self.open_alarm_manager)
         self.view_logs_button.clicked.connect(self.open_log_viewer)
         self.manage_templates_button.clicked.connect(self.open_template_manager)
+        self.view_history_button.clicked.connect(self.open_history_stats)
         self.quick_setup_button.clicked.connect(self.quick_setup_from_template)
         self.device_selector.currentIndexChanged.connect(self._on_device_changed)
         self.refresh_devices_button.clicked.connect(self._refresh_devices)
@@ -617,6 +618,10 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.manage_templates_button.setObjectName('manageTemplatesButton')
         button_layout.addWidget(self.manage_templates_button)
 
+        self.view_history_button = QPushButton('History & Stats')
+        self.view_history_button.setObjectName('viewHistoryButton')
+        button_layout.addWidget(self.view_history_button)
+
         self.view_logs_button = QPushButton('View Logs')
         self.view_logs_button.setObjectName('viewLogsButton')
         button_layout.addWidget(self.view_logs_button)
@@ -765,6 +770,11 @@ class AlarmApp(QtWidgets.QMainWindow):
     def _dismiss_alarm_from_tray(self):
         """Dismiss alarm from system tray."""
         logger.info("Dismissing alarm from system tray")
+        
+        # Record dismissal in history if current_alarm_data exists
+        if self.current_alarm_data and hasattr(self, 'alarm'):
+            self.alarm.history.record_dismiss(self.current_alarm_data)
+        
         self._hide_snooze_from_tray()
         
         self.tray_icon.showMessage(
@@ -1124,6 +1134,12 @@ class AlarmApp(QtWidgets.QMainWindow):
         """Open the log viewer dialog."""
         logger.info('Opening log viewer')
         dlg = LogViewerDialog(self)
+        dlg.exec_()
+
+    def open_history_stats(self):
+        """Open the alarm history and statistics dashboard."""
+        logger.info('Opening alarm history and statistics dashboard')
+        dlg = AlarmHistoryStatsDialog(self.alarm, self)
         dlg.exec_()
 
     def open_template_manager(self):
@@ -1572,7 +1588,7 @@ class SnoozeNotificationDialog(QDialog):
         btn_dismiss = QPushButton('Dismiss')
         btn_dismiss.setMinimumHeight(50)
         btn_dismiss.setFont(QFont('Inter', 14))
-        btn_dismiss.clicked.connect(self.accept)
+        btn_dismiss.clicked.connect(self._dismiss)
         btn_dismiss.setStyleSheet("""
             QPushButton {
                 background-color: #3a3a3a;
@@ -1607,6 +1623,19 @@ class SnoozeNotificationDialog(QDialog):
             snooze_msg = f'Alarm snoozed for {minutes} minutes'
             QMessageBox.information(self, 'Snoozed', snooze_msg)
             logger.info(f'Alarm successfully snoozed for {minutes} minutes')
+        
+        self.accept()
+    
+    def _dismiss(self):
+        """Dismiss the alarm and record dismissal in history."""
+        logger.info('User dismissed alarm from snooze dialog')
+        
+        if self.parent_app and hasattr(self.parent_app, 'alarm'):
+            self.parent_app.alarm.history.record_dismiss(self.alarm_data)
+            
+            # Hide snooze from tray since dialog handled it
+            if hasattr(self.parent_app, '_hide_snooze_from_tray'):
+                self.parent_app._hide_snooze_from_tray()
         
         self.accept()
 
@@ -3305,3 +3334,585 @@ class CrashReportDialog(QDialog):
         clipboard = QtWidgets.QApplication.clipboard()
         clipboard.setText(self.details_text.toPlainText())
         QMessageBox.information(self, 'Copied', 'Error details copied to clipboard')
+
+
+class AlarmHistoryStatsDialog(QDialog):
+    """
+    Dialog for viewing alarm history and statistics dashboard.
+    
+    Displays:
+    - Recent alarm history with detailed information
+    - Statistics: success rate, snooze patterns, wake-up trends
+    - Visualization widgets for wake patterns and day distribution
+    - Export functionality for sleep data
+    """
+    
+    def __init__(self, alarm_manager, parent=None):
+        """
+        Initialize the alarm history and statistics dialog.
+        
+        Args:
+            alarm_manager: Alarm instance with history manager.
+            parent: Parent widget.
+        """
+        super().__init__(parent)
+        self.alarm_manager = alarm_manager
+        self.history_manager = alarm_manager.history
+        
+        self.setWindowTitle('Alarm History & Statistics')
+        self.setMinimumSize(1000, 700)
+        self.setModal(True)
+        
+        self.current_days_filter = 30
+        
+        self._build_ui()
+        self._load_data()
+    
+    def _build_ui(self):
+        """Build the dialog UI with tabs for history and statistics."""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        
+        header = QLabel('Alarm History & Statistics Dashboard')
+        header.setFont(QFont('Inter', 18, QFont.Bold))
+        layout.addWidget(header)
+        
+        # Tab widget for different views
+        self.tabs = QtWidgets.QTabWidget()
+        self.tabs.setObjectName('historyTabs')
+        
+        # Statistics tab
+        self.stats_tab = self._build_stats_tab()
+        self.tabs.addTab(self.stats_tab, '📊 Statistics')
+        
+        # History tab
+        self.history_tab = self._build_history_tab()
+        self.tabs.addTab(self.history_tab, '📜 History')
+        
+        layout.addWidget(self.tabs)
+        
+        # Bottom buttons
+        button_layout = QHBoxLayout()
+        
+        # Time period filter
+        filter_label = QLabel('Time Period:')
+        button_layout.addWidget(filter_label)
+        
+        self.days_combo = QComboBox()
+        self.days_combo.addItem('Last 7 days', 7)
+        self.days_combo.addItem('Last 30 days', 30)
+        self.days_combo.addItem('Last 90 days', 90)
+        self.days_combo.addItem('All time', None)
+        self.days_combo.setCurrentIndex(1)  # Default to 30 days
+        self.days_combo.currentIndexChanged.connect(self._on_period_changed)
+        button_layout.addWidget(self.days_combo)
+        
+        button_layout.addStretch()
+        
+        btn_export_csv = QPushButton('Export CSV')
+        btn_export_csv.clicked.connect(self._export_csv)
+        btn_export_csv.setStyleSheet('padding: 8px 16px;')
+        button_layout.addWidget(btn_export_csv)
+        
+        btn_export_json = QPushButton('Export JSON')
+        btn_export_json.clicked.connect(self._export_json)
+        btn_export_json.setStyleSheet('padding: 8px 16px;')
+        button_layout.addWidget(btn_export_json)
+        
+        btn_clear = QPushButton('Clear Old Data')
+        btn_clear.clicked.connect(self._clear_old_data)
+        btn_clear.setStyleSheet('padding: 8px 16px; background-color: #c44; color: white;')
+        button_layout.addWidget(btn_clear)
+        
+        btn_refresh = QPushButton('Refresh')
+        btn_refresh.clicked.connect(self._load_data)
+        btn_refresh.setStyleSheet('padding: 8px 16px;')
+        button_layout.addWidget(btn_refresh)
+        
+        btn_close = QPushButton('Close')
+        btn_close.clicked.connect(self.accept)
+        btn_close.setStyleSheet('padding: 8px 16px;')
+        button_layout.addWidget(btn_close)
+        
+        layout.addLayout(button_layout)
+    
+    def _build_stats_tab(self):
+        """Build the statistics tab with visualizations."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(20)
+        
+        # Scroll area for stats content
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setObjectName('statsScrollArea')
+        
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(24)
+        
+        # Summary statistics cards
+        summary_container = QHBoxLayout()
+        summary_container.setSpacing(16)
+        
+        self.total_alarms_card = self._create_stat_card('Total Alarms', '0', '#1DB954')
+        summary_container.addWidget(self.total_alarms_card)
+        
+        self.success_rate_card = self._create_stat_card('Success Rate', '0%', '#1E90FF')
+        summary_container.addWidget(self.success_rate_card)
+        
+        self.avg_snooze_card = self._create_stat_card('Avg Snoozes', '0', '#FFA500')
+        summary_container.addWidget(self.avg_snooze_card)
+        
+        self.total_snoozes_card = self._create_stat_card('Total Snoozes', '0', '#FF6B6B')
+        summary_container.addWidget(self.total_snoozes_card)
+        
+        content_layout.addLayout(summary_container)
+        
+        # Insights section
+        insights_label = QLabel('Wake-Up Insights')
+        insights_label.setFont(QFont('Inter', 16, QFont.Bold))
+        content_layout.addWidget(insights_label)
+        
+        self.insights_container = QWidget()
+        insights_layout = QVBoxLayout(self.insights_container)
+        insights_layout.setSpacing(8)
+        insights_layout.setContentsMargins(16, 16, 16, 16)
+        self.insights_container.setStyleSheet(
+            'QWidget { background-color: rgba(29, 185, 84, 0.1); '
+            'border-radius: 8px; border: 1px solid rgba(29, 185, 84, 0.3); }'
+        )
+        
+        self.most_successful_label = QLabel('Most Successful Time: N/A')
+        self.most_successful_label.setFont(QFont('Inter', 12))
+        insights_layout.addWidget(self.most_successful_label)
+        
+        self.most_snoozed_label = QLabel('Most Snoozed Time: N/A')
+        self.most_snoozed_label.setFont(QFont('Inter', 12))
+        insights_layout.addWidget(self.most_snoozed_label)
+        
+        self.fade_usage_label = QLabel('Fade-in Usage: 0%')
+        self.fade_usage_label.setFont(QFont('Inter', 12))
+        insights_layout.addWidget(self.fade_usage_label)
+        
+        content_layout.addWidget(self.insights_container)
+        
+        # Wake patterns visualization
+        patterns_label = QLabel('Wake-Up Patterns by Hour')
+        patterns_label.setFont(QFont('Inter', 16, QFont.Bold))
+        content_layout.addWidget(patterns_label)
+        
+        self.patterns_widget = QWidget()
+        self.patterns_widget.setMinimumHeight(200)
+        self.patterns_widget.setStyleSheet(
+            'QWidget { background-color: #2a2a2a; border-radius: 8px; padding: 16px; }'
+        )
+        patterns_layout = QVBoxLayout(self.patterns_widget)
+        self.patterns_chart_label = QLabel('Loading...')
+        self.patterns_chart_label.setAlignment(Qt.AlignCenter)
+        patterns_layout.addWidget(self.patterns_chart_label)
+        content_layout.addWidget(self.patterns_widget)
+        
+        # Day distribution visualization
+        days_label = QLabel('Wake-Up Distribution by Day')
+        days_label.setFont(QFont('Inter', 16, QFont.Bold))
+        content_layout.addWidget(days_label)
+        
+        self.days_widget = QWidget()
+        self.days_widget.setMinimumHeight(200)
+        self.days_widget.setStyleSheet(
+            'QWidget { background-color: #2a2a2a; border-radius: 8px; padding: 16px; }'
+        )
+        days_layout = QVBoxLayout(self.days_widget)
+        self.days_chart_label = QLabel('Loading...')
+        self.days_chart_label.setAlignment(Qt.AlignCenter)
+        days_layout.addWidget(self.days_chart_label)
+        content_layout.addWidget(self.days_widget)
+        
+        # Favorite playlists
+        playlists_label = QLabel('Top 5 Alarm Playlists')
+        playlists_label.setFont(QFont('Inter', 16, QFont.Bold))
+        content_layout.addWidget(playlists_label)
+        
+        self.playlists_table = QTableWidget()
+        self.playlists_table.setColumnCount(2)
+        self.playlists_table.setHorizontalHeaderLabels(['Playlist Name', 'Usage Count'])
+        self.playlists_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.playlists_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.playlists_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.playlists_table.setMaximumHeight(200)
+        content_layout.addWidget(self.playlists_table)
+        
+        content_layout.addStretch()
+        
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
+        
+        return tab
+    
+    def _build_history_tab(self):
+        """Build the history tab with detailed alarm records."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(12)
+        
+        # Search/filter bar
+        filter_layout = QHBoxLayout()
+        
+        filter_label = QLabel('Filter:')
+        filter_layout.addWidget(filter_label)
+        
+        self.filter_combo = QComboBox()
+        self.filter_combo.addItem('All', None)
+        self.filter_combo.addItem('Successful Only', 'success')
+        self.filter_combo.addItem('Failed Only', 'failed')
+        self.filter_combo.addItem('Snoozed', 'snoozed')
+        self.filter_combo.currentIndexChanged.connect(self._apply_history_filter)
+        filter_layout.addWidget(self.filter_combo)
+        
+        filter_layout.addStretch()
+        
+        layout.addLayout(filter_layout)
+        
+        # History table
+        self.history_table = QTableWidget()
+        self.history_table.setColumnCount(8)
+        self.history_table.setHorizontalHeaderLabels([
+            'Timestamp', 'Time', 'Playlist', 'Volume', 'Day', 'Status', 'Snoozes', 'Fade-in'
+        ])
+        self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.history_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.history_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.history_table.setAlternatingRowColors(True)
+        layout.addWidget(self.history_table)
+        
+        return tab
+    
+    def _create_stat_card(self, title, value, color):
+        """Create a statistics card widget."""
+        card = QWidget()
+        card.setMinimumHeight(120)
+        card.setStyleSheet(
+            f'QWidget {{ background-color: rgba(42, 42, 42, 0.8); '
+            f'border-left: 4px solid {color}; border-radius: 8px; padding: 16px; }}'
+        )
+        
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(8)
+        
+        title_label = QLabel(title)
+        title_label.setFont(QFont('Inter', 11))
+        title_label.setStyleSheet('color: #b3b3b3;')
+        card_layout.addWidget(title_label)
+        
+        value_label = QLabel(value)
+        value_label.setFont(QFont('Inter', 32, QFont.Bold))
+        value_label.setStyleSheet(f'color: {color};')
+        value_label.setObjectName(f'{title.replace(" ", "_")}_value')
+        card_layout.addWidget(value_label)
+        
+        card_layout.addStretch()
+        
+        # Store value label for updates
+        card.value_label = value_label
+        
+        return card
+    
+    def _load_data(self):
+        """Load and display statistics and history data."""
+        days = self.current_days_filter
+        
+        # Get statistics
+        stats = self.history_manager.get_statistics(days=days if days else 9999)
+        
+        # Update summary cards
+        self.total_alarms_card.value_label.setText(str(stats['total_alarms']))
+        self.success_rate_card.value_label.setText(f"{stats['success_rate']:.1f}%")
+        self.avg_snooze_card.value_label.setText(f"{stats['avg_snooze_count']:.1f}")
+        self.total_snoozes_card.value_label.setText(str(stats['total_snoozes']))
+        
+        # Update insights
+        self.most_successful_label.setText(
+            f'✅ Most Successful Time: {stats["most_successful_time"] or "N/A"} '
+            f'(least snoozes per alarm)'
+        )
+        self.most_snoozed_label.setText(
+            f'😴 Most Snoozed Time: {stats["most_snoozed_time"] or "N/A"} '
+            f'(hardest to wake up)'
+        )
+        self.fade_usage_label.setText(
+            f'🎵 Fade-in Usage: {stats["fade_in_usage"]:.1f}% of alarms use fade-in'
+        )
+        
+        # Update wake patterns visualization
+        self._update_patterns_chart(stats['wake_patterns'])
+        
+        # Update day distribution visualization
+        self._update_days_chart(stats['day_distribution'])
+        
+        # Update favorite playlists
+        self._update_playlists_table(stats['favorite_playlists'])
+        
+        # Load history table
+        self._load_history_table()
+    
+    def _update_patterns_chart(self, wake_patterns):
+        """Update wake patterns visualization with bar chart."""
+        if not wake_patterns:
+            self.patterns_chart_label.setText('No wake pattern data available')
+            return
+        
+        # Create simple text-based bar chart
+        chart_text = ''
+        max_count = max(wake_patterns.values()) if wake_patterns else 1
+        
+        # Sort by hour
+        sorted_hours = sorted(wake_patterns.items(), key=lambda x: int(x[0]))
+        
+        for hour, count in sorted_hours:
+            bar_length = int((count / max_count) * 40)
+            bar = '█' * bar_length
+            chart_text += f'{hour}:00  {bar}  ({count})\n'
+        
+        self.patterns_chart_label.setText(chart_text)
+        self.patterns_chart_label.setFont(QFont('JetBrains Mono', 10))
+        self.patterns_chart_label.setAlignment(Qt.AlignLeft)
+        self.patterns_chart_label.setStyleSheet('color: #1DB954; padding: 8px;')
+    
+    def _update_days_chart(self, day_distribution):
+        """Update day distribution visualization with bar chart."""
+        if not day_distribution:
+            self.days_chart_label.setText('No day distribution data available')
+            return
+        
+        # Create simple text-based bar chart
+        chart_text = ''
+        max_count = max(day_distribution.values()) if day_distribution else 1
+        
+        # Order by weekday
+        day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        
+        for day in day_order:
+            count = day_distribution.get(day, 0)
+            if count > 0:
+                bar_length = int((count / max_count) * 35)
+                bar = '█' * bar_length
+                chart_text += f'{day[:3]:3s}  {bar}  ({count})\n'
+        
+        self.days_chart_label.setText(chart_text)
+        self.days_chart_label.setFont(QFont('JetBrains Mono', 10))
+        self.days_chart_label.setAlignment(Qt.AlignLeft)
+        self.days_chart_label.setStyleSheet('color: #1E90FF; padding: 8px;')
+    
+    def _update_playlists_table(self, favorite_playlists):
+        """Update favorite playlists table."""
+        self.playlists_table.setRowCount(len(favorite_playlists))
+        
+        for row, (playlist, count) in enumerate(favorite_playlists.items()):
+            self.playlists_table.setItem(row, 0, QTableWidgetItem(playlist))
+            
+            count_item = QTableWidgetItem(str(count))
+            count_item.setFont(QFont('Inter', 11, QFont.Bold))
+            count_item.setForeground(QColor('#1DB954'))
+            self.playlists_table.setItem(row, 1, count_item)
+    
+    def _load_history_table(self):
+        """Load history entries into the table."""
+        days = self.current_days_filter
+        
+        if days:
+            from datetime import datetime, timedelta
+            cutoff = datetime.now() - timedelta(days=days)
+            history = self.history_manager.get_history(start_date=cutoff)
+        else:
+            history = self.history_manager.get_history()
+        
+        self.full_history = history
+        self._apply_history_filter()
+    
+    def _apply_history_filter(self):
+        """Apply filter to history table."""
+        filter_type = self.filter_combo.currentData()
+        
+        if not hasattr(self, 'full_history'):
+            return
+        
+        # Filter history
+        if filter_type == 'success':
+            filtered = [e for e in self.full_history if e.get('success', False)]
+        elif filter_type == 'failed':
+            filtered = [e for e in self.full_history if not e.get('success', False)]
+        elif filter_type == 'snoozed':
+            filtered = [e for e in self.full_history if e.get('snoozed', False)]
+        else:
+            filtered = self.full_history
+        
+        # Populate table
+        self.history_table.setRowCount(len(filtered))
+        
+        for row, entry in enumerate(filtered):
+            # Timestamp
+            timestamp = entry.get('timestamp', '')
+            if timestamp:
+                dt = datetime.fromisoformat(timestamp)
+                timestamp_str = dt.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                timestamp_str = 'Unknown'
+            self.history_table.setItem(row, 0, QTableWidgetItem(timestamp_str))
+            
+            # Time
+            time_item = QTableWidgetItem(entry.get('trigger_time', 'N/A'))
+            time_item.setFont(QFont('JetBrains Mono', 10, QFont.Bold))
+            self.history_table.setItem(row, 1, time_item)
+            
+            # Playlist
+            self.history_table.setItem(row, 2, QTableWidgetItem(entry.get('playlist_name', 'Unknown')))
+            
+            # Volume
+            volume_item = QTableWidgetItem(f"{entry.get('volume', 80)}%")
+            self.history_table.setItem(row, 3, volume_item)
+            
+            # Day
+            self.history_table.setItem(row, 4, QTableWidgetItem(entry.get('day_of_week', 'Unknown')))
+            
+            # Status
+            success = entry.get('success', False)
+            status_item = QTableWidgetItem('✅ Success' if success else '❌ Failed')
+            status_item.setForeground(QColor('#1DB954' if success else '#FF6B6B'))
+            self.history_table.setItem(row, 5, status_item)
+            
+            # Snoozes
+            snooze_count = entry.get('snooze_count', 0)
+            snooze_item = QTableWidgetItem(str(snooze_count) if snooze_count > 0 else '-')
+            if snooze_count > 0:
+                snooze_item.setForeground(QColor('#FFA500'))
+            self.history_table.setItem(row, 6, snooze_item)
+            
+            # Fade-in
+            fade_enabled = entry.get('fade_in_enabled', False)
+            fade_text = f"Yes ({entry.get('fade_in_duration', 10)}m)" if fade_enabled else 'No'
+            self.history_table.setItem(row, 7, QTableWidgetItem(fade_text))
+    
+    def _on_period_changed(self, index):
+        """Handle time period filter change."""
+        self.current_days_filter = self.days_combo.itemData(index)
+        self._load_data()
+    
+    def _export_csv(self):
+        """Export alarm history to CSV file."""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            'Export Alarm History to CSV',
+            f'alarm_history_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv',
+            'CSV Files (*.csv);;All Files (*)'
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            from pathlib import Path
+            success = self.history_manager.export_to_csv(Path(file_path))
+            
+            if success:
+                QMessageBox.information(
+                    self,
+                    'Export Successful',
+                    f'Alarm history exported to:\n{file_path}'
+                )
+                logger.info(f'Exported alarm history to CSV: {file_path}')
+            else:
+                QMessageBox.warning(
+                    self,
+                    'Export Failed',
+                    'Failed to export alarm history. Check logs for details.'
+                )
+        except Exception as e:
+            logger.error(f'Failed to export CSV: {e}', exc_info=True)
+            QMessageBox.critical(
+                self,
+                'Export Error',
+                f'An error occurred during export:\n{str(e)}'
+            )
+    
+    def _export_json(self):
+        """Export alarm history to JSON file."""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            'Export Alarm History to JSON',
+            f'alarm_history_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json',
+            'JSON Files (*.json);;All Files (*)'
+        )
+        
+        if not file_path:
+            return
+        
+        try:
+            from pathlib import Path
+            success = self.history_manager.export_to_json(Path(file_path))
+            
+            if success:
+                QMessageBox.information(
+                    self,
+                    'Export Successful',
+                    f'Alarm history exported to:\n{file_path}'
+                )
+                logger.info(f'Exported alarm history to JSON: {file_path}')
+            else:
+                QMessageBox.warning(
+                    self,
+                    'Export Failed',
+                    'Failed to export alarm history. Check logs for details.'
+                )
+        except Exception as e:
+            logger.error(f'Failed to export JSON: {e}', exc_info=True)
+            QMessageBox.critical(
+                self,
+                'Export Error',
+                f'An error occurred during export:\n{str(e)}'
+            )
+    
+    def _clear_old_data(self):
+        """Clear old history entries."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Clear Old Data')
+        dialog.setModal(True)
+        
+        layout = QVBoxLayout(dialog)
+        
+        label = QLabel('Clear alarm history older than:')
+        layout.addWidget(label)
+        
+        days_input = QtWidgets.QSpinBox()
+        days_input.setMinimum(1)
+        days_input.setMaximum(365)
+        days_input.setValue(90)
+        days_input.setSuffix(' days')
+        layout.addWidget(days_input)
+        
+        warning = QLabel('⚠️ This action cannot be undone!')
+        warning.setStyleSheet('color: #FFA500; font-weight: bold;')
+        layout.addWidget(warning)
+        
+        btn_layout = QHBoxLayout()
+        
+        btn_cancel = QPushButton('Cancel')
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_layout.addWidget(btn_cancel)
+        
+        btn_clear = QPushButton('Clear Old Data')
+        btn_clear.setStyleSheet('background-color: #c44; color: white; padding: 8px 16px;')
+        btn_clear.clicked.connect(dialog.accept)
+        btn_layout.addWidget(btn_clear)
+        
+        layout.addLayout(btn_layout)
+        
+        if dialog.exec_() == QDialog.Accepted:
+            days = days_input.value()
+            self.history_manager.clear_old_entries(days=days)
+            QMessageBox.information(
+                self,
+                'Data Cleared',
+                f'Alarm history older than {days} days has been cleared.'
+            )
+            self._load_data()
