@@ -59,3 +59,6 @@ htmlcov/
 # Generated icons (from icon_generator.py)
 alarmify_icon_*.png
 tray_icon_*.png
+
+# User alarm templates
+alarm_templates.json

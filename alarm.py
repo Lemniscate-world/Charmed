@@ -35,6 +35,10 @@ import time      # Time-related functions (sleep)
 import threading  # Background thread execution
 from datetime import datetime  # Date and time utilities
 import re
+import json
+from pathlib import Path
+from dataclasses import dataclass, asdict
+from typing import List, Optional
 from logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -45,6 +49,187 @@ try:
 except ImportError:
     PYQT_AVAILABLE = False
     logger.warning("PyQt5 not available - fade-in feature will not be available")
+
+
+@dataclass
+class AlarmTemplate:
+    """
+    Template for alarm configuration.
+    
+    Stores reusable alarm settings that can be quickly applied when creating new alarms.
+    
+    Attributes:
+        name: Template name for identification.
+        time: Alarm time in HH:MM format.
+        playlist_name: Name of the Spotify playlist.
+        playlist_uri: Spotify URI of the playlist.
+        volume: Volume level 0-100.
+        fade_in_enabled: Whether to enable gradual volume fade-in.
+        fade_in_duration: Fade-in duration in minutes (5-30).
+        days: List of active weekday names or None for every day.
+    """
+    name: str
+    time: str
+    playlist_name: str
+    playlist_uri: str
+    volume: int = 80
+    fade_in_enabled: bool = False
+    fade_in_duration: int = 10
+    days: Optional[List[str]] = None
+    
+    def to_dict(self):
+        """Convert template to dictionary for JSON serialization."""
+        return asdict(self)
+    
+    @classmethod
+    def from_dict(cls, data):
+        """Create template from dictionary."""
+        return cls(**data)
+
+
+class TemplateManager:
+    """
+    Manager for alarm templates persistence.
+    
+    Handles loading and saving alarm templates to JSON file in the app directory.
+    """
+    
+    def __init__(self, templates_file: Optional[Path] = None):
+        """
+        Initialize template manager.
+        
+        Args:
+            templates_file: Path to templates JSON file (default: alarm_templates.json in app directory).
+        """
+        if templates_file is None:
+            app_dir = Path(__file__).resolve().parent
+            templates_file = app_dir / 'alarm_templates.json'
+        
+        self.templates_file = templates_file
+        logger.info(f'Template manager initialized with file: {self.templates_file}')
+    
+    def load_templates(self) -> List[AlarmTemplate]:
+        """
+        Load templates from JSON file.
+        
+        Returns:
+            List of AlarmTemplate objects.
+        """
+        if not self.templates_file.exists():
+            logger.info('No templates file found, returning empty list')
+            return []
+        
+        try:
+            with open(self.templates_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            templates = [AlarmTemplate.from_dict(t) for t in data]
+            logger.info(f'Loaded {len(templates)} templates from file')
+            return templates
+        except Exception as e:
+            logger.error(f'Failed to load templates: {e}', exc_info=True)
+            return []
+    
+    def save_templates(self, templates: List[AlarmTemplate]) -> bool:
+        """
+        Save templates to JSON file.
+        
+        Args:
+            templates: List of AlarmTemplate objects to save.
+        
+        Returns:
+            bool: True if save successful, False otherwise.
+        """
+        try:
+            data = [t.to_dict() for t in templates]
+            
+            with open(self.templates_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f'Saved {len(templates)} templates to file')
+            return True
+        except Exception as e:
+            logger.error(f'Failed to save templates: {e}', exc_info=True)
+            return False
+    
+    def add_template(self, template: AlarmTemplate) -> bool:
+        """
+        Add a new template.
+        
+        Args:
+            template: AlarmTemplate to add.
+        
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        templates = self.load_templates()
+        
+        # Check for duplicate names
+        if any(t.name == template.name for t in templates):
+            logger.warning(f'Template with name "{template.name}" already exists')
+            return False
+        
+        templates.append(template)
+        return self.save_templates(templates)
+    
+    def update_template(self, old_name: str, template: AlarmTemplate) -> bool:
+        """
+        Update an existing template.
+        
+        Args:
+            old_name: Original name of template to update.
+            template: Updated AlarmTemplate.
+        
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        templates = self.load_templates()
+        
+        # Find and replace template
+        for i, t in enumerate(templates):
+            if t.name == old_name:
+                templates[i] = template
+                return self.save_templates(templates)
+        
+        logger.warning(f'Template "{old_name}" not found for update')
+        return False
+    
+    def delete_template(self, name: str) -> bool:
+        """
+        Delete a template by name.
+        
+        Args:
+            name: Name of template to delete.
+        
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        templates = self.load_templates()
+        original_count = len(templates)
+        
+        templates = [t for t in templates if t.name != name]
+        
+        if len(templates) == original_count:
+            logger.warning(f'Template "{name}" not found for deletion')
+            return False
+        
+        return self.save_templates(templates)
+    
+    def get_template(self, name: str) -> Optional[AlarmTemplate]:
+        """
+        Get a template by name.
+        
+        Args:
+            name: Name of template to retrieve.
+        
+        Returns:
+            AlarmTemplate if found, None otherwise.
+        """
+        templates = self.load_templates()
+        for t in templates:
+            if t.name == name:
+                return t
+        return None
 
 
 if PYQT_AVAILABLE:

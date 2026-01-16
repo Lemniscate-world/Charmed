@@ -61,7 +61,7 @@ import sys
 
 # Local module imports
 from spotify_api.spotify_api import ThreadSafeSpotifyAPI  # Thread-safe Spotify API wrapper
-from alarm import Alarm  # Alarm scheduling
+from alarm import Alarm, AlarmTemplate, TemplateManager  # Alarm scheduling and templates
 from logging_config import get_logger, get_log_files, read_log_file, get_current_log_file
 from charm_stylesheet import get_stylesheet
 from charm_animations import AnimationBuilder, apply_entrance_animations
@@ -311,12 +311,15 @@ class AlarmApp(QtWidgets.QMainWindow):
                 self.spotify_api = None
 
         self.alarm = Alarm(self)
+        self.template_manager = TemplateManager()
 
         self.login_button.clicked.connect(self.login_to_spotify)
         self.set_alarm_button.clicked.connect(self.set_alarm)
         self.settings_button.clicked.connect(self.open_settings)
         self.manage_alarms_button.clicked.connect(self.open_alarm_manager)
         self.view_logs_button.clicked.connect(self.open_log_viewer)
+        self.manage_templates_button.clicked.connect(self.open_template_manager)
+        self.quick_setup_button.clicked.connect(self.quick_setup_from_template)
         self.device_selector.currentIndexChanged.connect(self._on_device_changed)
         self.refresh_devices_button.clicked.connect(self._refresh_devices)
         self.playlist_search.textChanged.connect(self._filter_playlists)
@@ -544,9 +547,18 @@ class AlarmApp(QtWidgets.QMainWindow):
         button_layout = QVBoxLayout()
         button_layout.setSpacing(12)
 
+        self.quick_setup_button = QPushButton('⚡ Quick Setup from Template')
+        self.quick_setup_button.setObjectName('quickSetupButton')
+        self.quick_setup_button.setToolTip('Create alarm from saved template')
+        button_layout.addWidget(self.quick_setup_button)
+
         self.manage_alarms_button = QPushButton('Manage Alarms')
         self.manage_alarms_button.setObjectName('manageAlarmsButton')
         button_layout.addWidget(self.manage_alarms_button)
+
+        self.manage_templates_button = QPushButton('Manage Templates')
+        self.manage_templates_button.setObjectName('manageTemplatesButton')
+        button_layout.addWidget(self.manage_templates_button)
 
         self.view_logs_button = QPushButton('View Logs')
         self.view_logs_button.setObjectName('viewLogsButton')
@@ -920,6 +932,81 @@ class AlarmApp(QtWidgets.QMainWindow):
         dlg = LogViewerDialog(self)
         dlg.exec_()
 
+    def open_template_manager(self):
+        """Open the template manager dialog."""
+        logger.info('Opening template manager')
+        dlg = TemplateManagerDialog(self.template_manager, self)
+        dlg.exec_()
+
+    def quick_setup_from_template(self):
+        """Quick setup alarm from a saved template."""
+        logger.info('Opening quick setup from template')
+        templates = self.template_manager.load_templates()
+        
+        if not templates:
+            QMessageBox.information(
+                self,
+                'No Templates',
+                'No templates available.\n\nCreate templates in the Template Manager first.'
+            )
+            return
+        
+        dlg = QuickSetupDialog(templates, self)
+        if dlg.exec_() == QDialog.Accepted:
+            selected_template = dlg.selected_template
+            if selected_template:
+                self._apply_template(selected_template)
+
+    def _apply_template(self, template: AlarmTemplate):
+        """
+        Apply a template to create a new alarm.
+        
+        Args:
+            template: AlarmTemplate to apply.
+        """
+        if not self.spotify_api or not self.spotify_api.is_authenticated():
+            QMessageBox.warning(
+                self,
+                'Not Logged In',
+                'You are not logged into Spotify.\n\n'
+                'Please click "Login to Spotify" to authenticate.'
+            )
+            return
+        
+        try:
+            self.alarm.set_alarm(
+                template.time,
+                template.playlist_name,
+                template.playlist_uri,
+                self.spotify_api,
+                template.volume,
+                template.fade_in_enabled,
+                template.fade_in_duration,
+                template.days
+            )
+            
+            message = f'Alarm created from template "{template.name}"\n\n'
+            message += f'Time: {template.time}\n'
+            message += f'Playlist: {template.playlist_name}\n'
+            message += f'Volume: {template.volume}%'
+            
+            if template.fade_in_enabled:
+                message += f'\nFade-in: {template.fade_in_duration} minutes'
+            
+            days_display = self._format_days_display(template.days)
+            message += f'\nActive days: {days_display}'
+            
+            QMessageBox.information(self, 'Alarm Created', message)
+            logger.info(f'Alarm created from template: {template.name}')
+            self._update_alarm_preview()
+        except Exception as e:
+            logger.error(f'Failed to create alarm from template: {e}', exc_info=True)
+            QMessageBox.critical(
+                self,
+                'Failed to Create Alarm',
+                f'Could not create alarm from template: {str(e)}'
+            )
+
     def set_alarm(self):
         """Set an alarm for the selected playlist."""
         time_str = self.time_input.time().toString('HH:mm')
@@ -981,7 +1068,7 @@ class AlarmApp(QtWidgets.QMainWindow):
         logger.info(f'User setting alarm: time={time_str}, playlist={playlist_name}, volume={volume}%')
 
         # Show alarm setup dialog with fade-in and day selection options
-        dlg = AlarmSetupDialog(self, playlist_name, time_str, volume)
+        dlg = AlarmSetupDialog(self, playlist_name, time_str, volume, playlist_uri)
         if dlg.exec_() != QDialog.Accepted:
             return
         
@@ -1334,7 +1421,7 @@ class AlarmSetupDialog(QDialog):
     - Preview fade-in with current playback
     """
     
-    def __init__(self, parent=None, playlist_name='', time_str='', volume=80):
+    def __init__(self, parent=None, playlist_name='', time_str='', volume=80, playlist_uri=''):
         """
         Initialize the alarm setup dialog.
         
@@ -1343,6 +1430,7 @@ class AlarmSetupDialog(QDialog):
             playlist_name: Name of the playlist for the alarm.
             time_str: Time string for the alarm.
             volume: Target volume for the alarm.
+            playlist_uri: Spotify URI of the playlist.
         """
         super().__init__(parent)
         self.setWindowTitle('Alarm Setup')
@@ -1353,6 +1441,7 @@ class AlarmSetupDialog(QDialog):
         self.fade_in_duration = 10
         self.target_volume = volume
         self.preview_controller = None
+        self.playlist_uri = playlist_uri
         
         self._build_ui(playlist_name, time_str, volume)
     
@@ -1470,54 +1559,14 @@ class AlarmSetupDialog(QDialog):
         
         layout.addWidget(duration_widget)
         
-        # Preview section
-        preview_widget = QWidget()
-        preview_layout = QVBoxLayout(preview_widget)
-        preview_layout.setContentsMargins(24, 8, 0, 0)
-        preview_layout.setSpacing(8)
-        
-        preview_label = QLabel('Preview fade-in:')
-        preview_label.setStyleSheet('color: #888; font-size: 12px;')
-        preview_layout.addWidget(preview_label)
-        
-        preview_button_layout = QHBoxLayout()
-        
-        self.btn_preview = QPushButton('Preview Fade-In (30s)')
-        self.btn_preview.setEnabled(False)
-        self.btn_preview.clicked.connect(self._preview_fade_in)
-        self.btn_preview.setStyleSheet(
-            'background-color: #2a2a2a; color: #1DB954; '
-            'border: 1px solid #1DB954; padding: 8px 16px; border-radius: 4px;'
-        )
-        self.btn_preview.setToolTip('Preview fade-in over 30 seconds with current Spotify playback')
-        preview_button_layout.addWidget(self.btn_preview)
-        
-        self.btn_stop_preview = QPushButton('Stop Preview')
-        self.btn_stop_preview.setEnabled(False)
-        self.btn_stop_preview.clicked.connect(self._stop_preview)
-        self.btn_stop_preview.setStyleSheet(
-            'background-color: #2a2a2a; color: #FF6B6B; '
-            'border: 1px solid #FF6B6B; padding: 8px 16px; border-radius: 4px;'
-        )
-        preview_button_layout.addWidget(self.btn_stop_preview)
-        preview_button_layout.addStretch()
-        
-        preview_layout.addLayout(preview_button_layout)
-        
-        self.preview_status_label = QLabel('')
-        self.preview_status_label.setStyleSheet('color: #888; font-size: 11px; font-style: italic;')
-        preview_layout.addWidget(self.preview_status_label)
-        
-        layout.addWidget(preview_widget)
-        
-        # Separator
-        separator2 = QFrame()
-        separator2.setFrameShape(QFrame.HLine)
-        separator2.setFrameShadow(QFrame.Sunken)
-        layout.addWidget(separator2)
-        
         # Buttons
         button_layout = QHBoxLayout()
+        
+        btn_save_template = QPushButton('Save as Template')
+        btn_save_template.clicked.connect(self._save_as_template)
+        btn_save_template.setStyleSheet('background-color: #3a3a3a; color: white; padding: 8px 16px;')
+        button_layout.addWidget(btn_save_template)
+        
         button_layout.addStretch()
         
         btn_cancel = QPushButton('Cancel')
@@ -1531,6 +1580,10 @@ class AlarmSetupDialog(QDialog):
         button_layout.addWidget(btn_ok)
         
         layout.addLayout(button_layout)
+        
+        self.playlist_name = playlist_name
+        self.time_str = time_str
+        self.volume = volume
     
     def _select_every_day(self):
         """Select all days."""
@@ -1552,16 +1605,63 @@ class AlarmSetupDialog(QDialog):
     def _on_fade_in_toggled(self, checked):
         """Handle fade-in checkbox toggle."""
         self.duration_slider.setEnabled(checked)
-        self.btn_preview.setEnabled(checked)
         self.fade_in_enabled = checked
-        
-        if not checked and self.preview_controller:
-            self._stop_preview()
     
     def _on_duration_changed(self, value):
         """Handle duration slider change."""
         self.duration_value_label.setText(f'{value} min')
         self.fade_in_duration = value
+    
+    def _save_as_template(self):
+        """Save current alarm configuration as a template."""
+        name, ok = QtWidgets.QInputDialog.getText(
+            self,
+            'Save Template',
+            'Enter template name:'
+        )
+        
+        if not ok or not name.strip():
+            return
+        
+        name = name.strip()
+        
+        selected_days = [day for day, checkbox in self.day_checkboxes.items() if checkbox.isChecked()]
+        if len(selected_days) == 7:
+            selected_days = None
+        
+        template = AlarmTemplate(
+            name=name,
+            time=self.time_str,
+            playlist_name=self.playlist_name,
+            playlist_uri=self.playlist_uri,
+            volume=self.volume,
+            fade_in_enabled=self.fade_in_enabled,
+            fade_in_duration=self.fade_in_duration,
+            days=selected_days
+        )
+        
+        if hasattr(self.parent(), 'template_manager'):
+            template_manager = self.parent().template_manager
+            if template_manager.add_template(template):
+                QMessageBox.information(
+                    self,
+                    'Template Saved',
+                    f'Template "{name}" has been saved successfully.'
+                )
+                logger.info(f'Template "{name}" saved from alarm setup dialog')
+            else:
+                QMessageBox.warning(
+                    self,
+                    'Failed to Save',
+                    f'A template with the name "{name}" already exists.\n\n'
+                    'Please choose a different name.'
+                )
+        else:
+            QMessageBox.warning(
+                self,
+                'Error',
+                'Template manager not available.'
+            )
     
     def _on_accept(self):
         """Handle OK button click - validate and collect selected days."""
@@ -1579,100 +1679,548 @@ class AlarmSetupDialog(QDialog):
         self.selected_days = None if len(selected) == 7 else selected
         
         self.accept()
+
+
+class TemplateManagerDialog(QDialog):
+    """
+    Dialog for managing alarm templates.
     
-    def _preview_fade_in(self):
-        """Start a 30-second preview of the fade-in effect."""
-        parent_app = self.parent()
-        if not parent_app or not hasattr(parent_app, 'spotify_api'):
-            QMessageBox.warning(
-                self,
-                'Preview Unavailable',
-                'Cannot preview fade-in: Spotify API not available.'
-            )
-            return
+    Allows user to:
+    - View all saved templates
+    - Create new templates
+    - Edit existing templates
+    - Delete templates
+    """
+    
+    def __init__(self, template_manager, parent=None):
+        """
+        Initialize the template manager dialog.
         
-        spotify_api = parent_app.spotify_api
-        if not spotify_api or not spotify_api.is_authenticated():
-            QMessageBox.warning(
-                self,
-                'Not Authenticated',
-                'Please log in to Spotify before previewing fade-in.'
-            )
-            return
+        Args:
+            template_manager: TemplateManager instance.
+            parent: Parent widget.
+        """
+        super().__init__(parent)
+        self.template_manager = template_manager
+        self.setWindowTitle('Manage Alarm Templates')
+        self.setMinimumSize(800, 600)
+        self.setModal(True)
         
-        try:
-            from alarm import FadeInController, PYQT_AVAILABLE
+        self._build_ui()
+        self._load_templates()
+    
+    def _build_ui(self):
+        """Build the dialog UI."""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        
+        header = QLabel('Alarm Templates')
+        header.setFont(QFont('Inter', 16, QFont.Bold))
+        layout.addWidget(header)
+        
+        description = QLabel(
+            'Templates let you save alarm configurations for quick reuse. '
+            'Create a template with your favorite settings and apply it instantly.'
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet('color: #b3b3b3; padding: 8px;')
+        layout.addWidget(description)
+        
+        self.table = QTableWidget()
+        self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels([
+            'Name', 'Time', 'Playlist', 'Volume', 'Fade-in', 'Days', 'Actions'
+        ])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        layout.addWidget(self.table)
+        
+        button_layout = QHBoxLayout()
+        
+        btn_create = QPushButton('Create Template')
+        btn_create.clicked.connect(self._create_template)
+        btn_create.setStyleSheet('background-color: #1DB954; color: white; padding: 8px 16px; font-weight: bold;')
+        button_layout.addWidget(btn_create)
+        
+        button_layout.addStretch()
+        
+        btn_refresh = QPushButton('Refresh')
+        btn_refresh.clicked.connect(self._load_templates)
+        button_layout.addWidget(btn_refresh)
+        
+        btn_close = QPushButton('Close')
+        btn_close.clicked.connect(self.accept)
+        button_layout.addWidget(btn_close)
+        
+        layout.addLayout(button_layout)
+    
+    def _load_templates(self):
+        """Load and display all templates."""
+        templates = self.template_manager.load_templates()
+        self.table.setRowCount(len(templates))
+        
+        for row, template in enumerate(templates):
+            self.table.setItem(row, 0, QTableWidgetItem(template.name))
+            self.table.setItem(row, 1, QTableWidgetItem(template.time))
+            self.table.setItem(row, 2, QTableWidgetItem(template.playlist_name))
+            self.table.setItem(row, 3, QTableWidgetItem(f'{template.volume}%'))
             
-            if not PYQT_AVAILABLE:
+            fade_text = 'Yes' if template.fade_in_enabled else 'No'
+            if template.fade_in_enabled:
+                fade_text += f' ({template.fade_in_duration}min)'
+            self.table.setItem(row, 4, QTableWidgetItem(fade_text))
+            
+            days_display = self._format_days_display(template.days)
+            self.table.setItem(row, 5, QTableWidgetItem(days_display))
+            
+            actions_widget = QWidget()
+            actions_layout = QHBoxLayout(actions_widget)
+            actions_layout.setContentsMargins(4, 4, 4, 4)
+            actions_layout.setSpacing(4)
+            
+            btn_edit = QPushButton('Edit')
+            btn_edit.clicked.connect(lambda checked, t=template: self._edit_template(t))
+            btn_edit.setStyleSheet('padding: 4px 12px;')
+            actions_layout.addWidget(btn_edit)
+            
+            btn_delete = QPushButton('Delete')
+            btn_delete.clicked.connect(lambda checked, t=template: self._delete_template(t))
+            btn_delete.setStyleSheet('padding: 4px 12px; background-color: #c44; color: white;')
+            actions_layout.addWidget(btn_delete)
+            
+            self.table.setCellWidget(row, 6, actions_widget)
+    
+    def _format_days_display(self, days):
+        """Format days list for display."""
+        if days is None:
+            return 'Every day'
+        
+        if len(days) == 7:
+            return 'Every day'
+        
+        if set(days) == {'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'}:
+            return 'Weekdays'
+        
+        if set(days) == {'Saturday', 'Sunday'}:
+            return 'Weekends'
+        
+        abbrev = {
+            'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed',
+            'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat', 'Sunday': 'Sun'
+        }
+        
+        return ', '.join([abbrev.get(day, day) for day in days])
+    
+    def _create_template(self):
+        """Create a new template."""
+        dlg = TemplateEditDialog(None, self.parent(), self)
+        if dlg.exec_() == QDialog.Accepted:
+            template = dlg.get_template()
+            if template and self.template_manager.add_template(template):
+                QMessageBox.information(self, 'Success', f'Template "{template.name}" created.')
+                self._load_templates()
+            else:
                 QMessageBox.warning(
                     self,
-                    'Preview Unavailable',
-                    'PyQt5 is required for fade-in preview.'
+                    'Failed',
+                    'Failed to create template. A template with this name may already exist.'
                 )
-                return
-            
-            # Stop any existing preview
-            if self.preview_controller and self.preview_controller.is_running():
-                self.preview_controller.stop()
-            
-            # Create a 30-second preview controller (0.5 minutes)
-            preview_duration = 0.5
-            self.preview_controller = FadeInController(
-                spotify_api, self.target_volume, preview_duration
-            )
-            
-            # Connect completion signal
-            self.preview_controller.fade_complete.connect(self._on_preview_complete)
-            
-            # Start preview
-            self.preview_controller.start()
-            
-            # Update UI
-            self.btn_preview.setEnabled(False)
-            self.btn_stop_preview.setEnabled(True)
-            self.preview_status_label.setText(
-                f'Preview in progress: fading to {self.target_volume}% over 30 seconds...'
-            )
-            self.preview_status_label.setStyleSheet('color: #1DB954; font-size: 11px; font-style: italic;')
-            
-            logger.info(f'Started fade-in preview: 30s to {self.target_volume}%')
-            
-        except Exception as e:
-            logger.error(f'Failed to start fade-in preview: {e}', exc_info=True)
-            QMessageBox.warning(
+    
+    def _edit_template(self, template):
+        """Edit an existing template."""
+        dlg = TemplateEditDialog(template, self.parent(), self)
+        if dlg.exec_() == QDialog.Accepted:
+            new_template = dlg.get_template()
+            if new_template and self.template_manager.update_template(template.name, new_template):
+                QMessageBox.information(self, 'Success', f'Template "{new_template.name}" updated.')
+                self._load_templates()
+            else:
+                QMessageBox.warning(self, 'Failed', 'Failed to update template.')
+    
+    def _delete_template(self, template):
+        """Delete a template."""
+        reply = QMessageBox.question(
+            self,
+            'Confirm Delete',
+            f'Are you sure you want to delete the template "{template.name}"?',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            if self.template_manager.delete_template(template.name):
+                QMessageBox.information(self, 'Deleted', f'Template "{template.name}" deleted.')
+                self._load_templates()
+            else:
+                QMessageBox.warning(self, 'Failed', 'Failed to delete template.')
+
+
+class TemplateEditDialog(QDialog):
+    """
+    Dialog for creating or editing a template.
+    """
+    
+    def __init__(self, template=None, main_window=None, parent=None):
+        """
+        Initialize the template edit dialog.
+        
+        Args:
+            template: AlarmTemplate to edit, or None to create new.
+            main_window: Reference to AlarmApp for playlist selection.
+            parent: Parent widget.
+        """
+        super().__init__(parent)
+        self.template = template
+        self.main_window = main_window
+        self.selected_playlist_uri = template.playlist_uri if template else None
+        self.selected_playlist_name = template.playlist_name if template else None
+        
+        self.setWindowTitle('Edit Template' if template else 'Create Template')
+        self.setMinimumWidth(500)
+        self.setModal(True)
+        
+        self._build_ui()
+        
+        if template:
+            self._populate_fields()
+    
+    def _build_ui(self):
+        """Build the dialog UI."""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        
+        form_layout = QFormLayout()
+        form_layout.setSpacing(10)
+        
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText('Enter template name')
+        form_layout.addRow('Template Name:', self.name_input)
+        
+        self.time_input = QTimeEdit()
+        self.time_input.setDisplayFormat('HH:mm')
+        self.time_input.setMinimumHeight(40)
+        form_layout.addRow('Time:', self.time_input)
+        
+        playlist_row = QHBoxLayout()
+        self.playlist_label = QLabel('No playlist selected')
+        self.playlist_label.setStyleSheet('padding: 8px; background: #2a2a2a; border-radius: 4px;')
+        playlist_row.addWidget(self.playlist_label, stretch=1)
+        
+        btn_select_playlist = QPushButton('Select Playlist')
+        btn_select_playlist.clicked.connect(self._select_playlist)
+        playlist_row.addWidget(btn_select_playlist)
+        
+        form_layout.addRow('Playlist:', playlist_row)
+        
+        self.volume_slider = QSlider(Qt.Horizontal)
+        self.volume_slider.setMinimum(0)
+        self.volume_slider.setMaximum(100)
+        self.volume_slider.setValue(80)
+        self.volume_slider.valueChanged.connect(self._on_volume_changed)
+        
+        volume_row = QHBoxLayout()
+        volume_row.addWidget(self.volume_slider)
+        self.volume_label = QLabel('80%')
+        self.volume_label.setFixedWidth(50)
+        volume_row.addWidget(self.volume_label)
+        
+        form_layout.addRow('Volume:', volume_row)
+        
+        layout.addLayout(form_layout)
+        
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        layout.addWidget(separator)
+        
+        days_label = QLabel('Active Days')
+        days_label.setFont(QFont('Arial', 12, QFont.Bold))
+        layout.addWidget(days_label)
+        
+        days_widget = QWidget()
+        days_layout = QHBoxLayout(days_widget)
+        days_layout.setSpacing(8)
+        
+        self.day_checkboxes = {}
+        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        day_abbrev = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        
+        for day, abbrev in zip(days, day_abbrev):
+            checkbox = QCheckBox(abbrev)
+            checkbox.setChecked(True)
+            checkbox.setToolTip(day)
+            self.day_checkboxes[day] = checkbox
+            days_layout.addWidget(checkbox)
+        
+        layout.addWidget(days_widget)
+        
+        separator2 = QFrame()
+        separator2.setFrameShape(QFrame.HLine)
+        layout.addWidget(separator2)
+        
+        fade_label = QLabel('Fade-In Settings')
+        fade_label.setFont(QFont('Arial', 12, QFont.Bold))
+        layout.addWidget(fade_label)
+        
+        self.fade_checkbox = QCheckBox('Enable gradual volume fade-in')
+        self.fade_checkbox.toggled.connect(self._on_fade_toggled)
+        layout.addWidget(self.fade_checkbox)
+        
+        duration_row = QHBoxLayout()
+        duration_row.addWidget(QLabel('Duration:'))
+        
+        self.fade_duration_slider = QSlider(Qt.Horizontal)
+        self.fade_duration_slider.setMinimum(5)
+        self.fade_duration_slider.setMaximum(30)
+        self.fade_duration_slider.setValue(10)
+        self.fade_duration_slider.setEnabled(False)
+        self.fade_duration_slider.valueChanged.connect(self._on_fade_duration_changed)
+        duration_row.addWidget(self.fade_duration_slider)
+        
+        self.fade_duration_label = QLabel('10 min')
+        self.fade_duration_label.setFixedWidth(60)
+        duration_row.addWidget(self.fade_duration_label)
+        
+        layout.addLayout(duration_row)
+        
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        btn_cancel = QPushButton('Cancel')
+        btn_cancel.clicked.connect(self.reject)
+        button_layout.addWidget(btn_cancel)
+        
+        btn_save = QPushButton('Save Template')
+        btn_save.setDefault(True)
+        btn_save.clicked.connect(self._save_template)
+        btn_save.setStyleSheet('background-color: #1DB954; color: white; padding: 8px 24px; font-weight: bold;')
+        button_layout.addWidget(btn_save)
+        
+        layout.addLayout(button_layout)
+    
+    def _populate_fields(self):
+        """Populate fields when editing existing template."""
+        if not self.template:
+            return
+        
+        self.name_input.setText(self.template.name)
+        
+        time_parts = self.template.time.split(':')
+        if len(time_parts) == 2:
+            from PyQt5.QtCore import QTime
+            self.time_input.setTime(QTime(int(time_parts[0]), int(time_parts[1])))
+        
+        self.playlist_label.setText(self.template.playlist_name)
+        self.volume_slider.setValue(self.template.volume)
+        
+        if self.template.days:
+            for day in self.day_checkboxes:
+                self.day_checkboxes[day].setChecked(day in self.template.days)
+        
+        self.fade_checkbox.setChecked(self.template.fade_in_enabled)
+        self.fade_duration_slider.setValue(self.template.fade_in_duration)
+    
+    def _select_playlist(self):
+        """Open playlist selection dialog."""
+        if not self.main_window or not hasattr(self.main_window, 'playlist_list'):
+            QMessageBox.warning(self, 'Error', 'Cannot access playlists.')
+            return
+        
+        playlist_list = self.main_window.playlist_list
+        if playlist_list.count() == 0:
+            QMessageBox.information(
                 self,
-                'Preview Failed',
-                f'Could not start fade-in preview:\n{str(e)}\n\n'
-                'Make sure Spotify is playing on an active device.'
+                'No Playlists',
+                'No playlists available. Please log in to Spotify first.'
             )
-    
-    def _stop_preview(self):
-        """Stop the fade-in preview."""
-        if self.preview_controller:
-            self.preview_controller.stop()
-            self.preview_controller = None
+            return
         
-        self.btn_preview.setEnabled(self.fade_in_enabled)
-        self.btn_stop_preview.setEnabled(False)
-        self.preview_status_label.setText('Preview stopped')
-        self.preview_status_label.setStyleSheet('color: #FF6B6B; font-size: 11px; font-style: italic;')
+        dlg = QDialog(self)
+        dlg.setWindowTitle('Select Playlist')
+        dlg.setMinimumSize(400, 500)
         
-        logger.info('Stopped fade-in preview')
-    
-    def _on_preview_complete(self):
-        """Handle preview completion."""
-        self.btn_preview.setEnabled(self.fade_in_enabled)
-        self.btn_stop_preview.setEnabled(False)
-        self.preview_status_label.setText('Preview complete')
-        self.preview_status_label.setStyleSheet('color: #888; font-size: 11px; font-style: italic;')
+        layout = QVBoxLayout(dlg)
         
-        logger.info('Fade-in preview completed')
+        list_widget = QListWidget()
+        
+        for i in range(playlist_list.count()):
+            item = playlist_list.item(i)
+            playlist_data = item.data(Qt.UserRole)
+            if playlist_data:
+                list_item = QListWidgetItem(playlist_data.get('name', 'Unknown'))
+                list_item.setData(Qt.UserRole, playlist_data)
+                list_widget.addItem(list_item)
+        
+        layout.addWidget(list_widget)
+        
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton('Cancel')
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_layout.addWidget(btn_cancel)
+        
+        btn_select = QPushButton('Select')
+        btn_select.clicked.connect(dlg.accept)
+        btn_layout.addWidget(btn_select)
+        
+        layout.addLayout(btn_layout)
+        
+        if dlg.exec_() == QDialog.Accepted:
+            current = list_widget.currentItem()
+            if current:
+                playlist_data = current.data(Qt.UserRole)
+                self.selected_playlist_uri = playlist_data.get('uri')
+                self.selected_playlist_name = playlist_data.get('name')
+                self.playlist_label.setText(self.selected_playlist_name)
     
-    def closeEvent(self, event):
-        """Clean up when dialog closes."""
-        if self.preview_controller and self.preview_controller.is_running():
-            self.preview_controller.stop()
-        event.accept()
+    def _on_volume_changed(self, value):
+        """Update volume label."""
+        self.volume_label.setText(f'{value}%')
+    
+    def _on_fade_toggled(self, checked):
+        """Handle fade-in checkbox toggle."""
+        self.fade_duration_slider.setEnabled(checked)
+    
+    def _on_fade_duration_changed(self, value):
+        """Update fade duration label."""
+        self.fade_duration_label.setText(f'{value} min')
+    
+    def _save_template(self):
+        """Validate and save the template."""
+        name = self.name_input.text().strip()
+        if not name:
+            QMessageBox.warning(self, 'Validation Error', 'Please enter a template name.')
+            return
+        
+        if not self.selected_playlist_uri or not self.selected_playlist_name:
+            QMessageBox.warning(self, 'Validation Error', 'Please select a playlist.')
+            return
+        
+        selected_days = [day for day, checkbox in self.day_checkboxes.items() if checkbox.isChecked()]
+        if not selected_days:
+            QMessageBox.warning(self, 'Validation Error', 'Please select at least one day.')
+            return
+        
+        if len(selected_days) == 7:
+            selected_days = None
+        
+        self.created_template = AlarmTemplate(
+            name=name,
+            time=self.time_input.time().toString('HH:mm'),
+            playlist_name=self.selected_playlist_name,
+            playlist_uri=self.selected_playlist_uri,
+            volume=self.volume_slider.value(),
+            fade_in_enabled=self.fade_checkbox.isChecked(),
+            fade_in_duration=self.fade_duration_slider.value(),
+            days=selected_days
+        )
+        
+        self.accept()
+    
+    def get_template(self):
+        """Get the created/edited template."""
+        return getattr(self, 'created_template', None)
+
+
+class QuickSetupDialog(QDialog):
+    """
+    Dialog for quick alarm setup from templates.
+    
+    Shows list of available templates and allows user to select one
+    to quickly create an alarm.
+    """
+    
+    def __init__(self, templates, parent=None):
+        """
+        Initialize the quick setup dialog.
+        
+        Args:
+            templates: List of AlarmTemplate objects.
+            parent: Parent widget.
+        """
+        super().__init__(parent)
+        self.templates = templates
+        self.selected_template = None
+        
+        self.setWindowTitle('Quick Setup from Template')
+        self.setMinimumSize(600, 400)
+        self.setModal(True)
+        
+        self._build_ui()
+    
+    def _build_ui(self):
+        """Build the dialog UI."""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        
+        header = QLabel('Select a Template')
+        header.setFont(QFont('Inter', 16, QFont.Bold))
+        layout.addWidget(header)
+        
+        description = QLabel('Choose a template to quickly create an alarm with saved settings.')
+        description.setStyleSheet('color: #b3b3b3;')
+        layout.addWidget(description)
+        
+        self.list_widget = QListWidget()
+        self.list_widget.itemDoubleClicked.connect(self._on_template_selected)
+        
+        for template in self.templates:
+            days_display = self._format_days_display(template.days)
+            fade_text = f", Fade: {template.fade_in_duration}min" if template.fade_in_enabled else ""
+            
+            item_text = (
+                f"{template.name}\n"
+                f"  Time: {template.time} | Playlist: {template.playlist_name}\n"
+                f"  Volume: {template.volume}% | Days: {days_display}{fade_text}"
+            )
+            
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.UserRole, template)
+            self.list_widget.addItem(item)
+        
+        layout.addWidget(self.list_widget)
+        
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        btn_cancel = QPushButton('Cancel')
+        btn_cancel.clicked.connect(self.reject)
+        button_layout.addWidget(btn_cancel)
+        
+        btn_select = QPushButton('Create Alarm from Template')
+        btn_select.setDefault(True)
+        btn_select.clicked.connect(self._on_template_selected)
+        btn_select.setStyleSheet('background-color: #1DB954; color: white; padding: 8px 24px; font-weight: bold;')
+        button_layout.addWidget(btn_select)
+        
+        layout.addLayout(button_layout)
+    
+    def _format_days_display(self, days):
+        """Format days list for display."""
+        if days is None:
+            return 'Every day'
+        
+        if len(days) == 7:
+            return 'Every day'
+        
+        if set(days) == {'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'}:
+            return 'Weekdays'
+        
+        if set(days) == {'Saturday', 'Sunday'}:
+            return 'Weekends'
+        
+        abbrev = {
+            'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed',
+            'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat', 'Sunday': 'Sun'
+        }
+        
+        return ', '.join([abbrev.get(day, day) for day in days])
+    
+    def _on_template_selected(self):
+        """Handle template selection."""
+        current = self.list_widget.currentItem()
+        if current:
+            self.selected_template = current.data(Qt.UserRole)
+            self.accept()
 
 
 class AlarmManagerDialog(QDialog):
