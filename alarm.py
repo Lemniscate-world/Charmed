@@ -29,6 +29,122 @@ from logging_config import get_logger
 
 logger = get_logger(__name__)
 
+try:
+    from PyQt5.QtCore import QTimer, QObject, pyqtSignal
+    PYQT_AVAILABLE = True
+except ImportError:
+    PYQT_AVAILABLE = False
+    logger.warning("PyQt5 not available - fade-in feature will not be available")
+
+
+if PYQT_AVAILABLE:
+    class FadeInController(QObject):
+        """
+        Controller for gradual volume fade-in using QTimer.
+        
+        Increases volume from 0 to target volume over the specified duration
+        using incremental steps at regular intervals.
+        
+        Attributes:
+            spotify_api: SpotifyAPI instance for volume control.
+            target_volume: Final volume level (0-100).
+            duration_minutes: Total fade-in duration in minutes.
+            step_interval_ms: Milliseconds between volume updates.
+        """
+        
+        fade_complete = pyqtSignal()
+        
+        def __init__(self, spotify_api, target_volume, duration_minutes):
+            """
+            Initialize the fade-in controller.
+            
+            Args:
+                spotify_api: SpotifyAPI instance for volume control.
+                target_volume: Final volume level (0-100).
+                duration_minutes: Total fade-in duration in minutes (5-30).
+            """
+            super().__init__()
+            self.spotify_api = spotify_api
+            self.target_volume = target_volume
+            self.duration_minutes = duration_minutes
+            
+            # Calculate fade parameters
+            self.step_interval_ms = 5000  # 5 seconds between updates
+            self.total_steps = int((duration_minutes * 60 * 1000) / self.step_interval_ms)
+            self.volume_step = target_volume / self.total_steps
+            
+            self.current_volume = 0
+            self.current_step = 0
+            self.is_active = False
+            
+            # Create timer for incremental updates
+            self.timer = QTimer()
+            self.timer.timeout.connect(self._update_volume)
+            
+            logger.info(
+                f"FadeInController initialized - target: {target_volume}%, "
+                f"duration: {duration_minutes}min, steps: {self.total_steps}"
+            )
+        
+        def start(self):
+            """Start the fade-in process."""
+            if self.is_active:
+                logger.warning("Fade-in already active")
+                return
+            
+            self.is_active = True
+            self.current_volume = 0
+            self.current_step = 0
+            
+            # Set initial volume to 0
+            try:
+                self.spotify_api.set_volume(0)
+                logger.info(f"Starting fade-in over {self.duration_minutes} minutes")
+            except Exception as e:
+                logger.error(f"Failed to set initial volume: {e}")
+            
+            # Start timer
+            self.timer.start(self.step_interval_ms)
+        
+        def _update_volume(self):
+            """Update volume by one step."""
+            if not self.is_active:
+                return
+            
+            self.current_step += 1
+            self.current_volume = min(
+                int(self.current_step * self.volume_step),
+                self.target_volume
+            )
+            
+            try:
+                self.spotify_api.set_volume(self.current_volume)
+                logger.debug(
+                    f"Fade-in step {self.current_step}/{self.total_steps}: "
+                    f"volume={self.current_volume}%"
+                )
+            except Exception as e:
+                logger.error(f"Failed to update volume during fade-in: {e}")
+            
+            # Check if fade-in is complete
+            if self.current_step >= self.total_steps:
+                self.stop()
+                self.fade_complete.emit()
+                logger.info(f"Fade-in complete at {self.target_volume}%")
+        
+        def stop(self):
+            """Stop the fade-in process."""
+            if not self.is_active:
+                return
+            
+            self.is_active = False
+            self.timer.stop()
+            logger.info("Fade-in stopped")
+        
+        def is_running(self):
+            """Check if fade-in is currently active."""
+            return self.is_active
+
 
 class Alarm:
     """
@@ -56,9 +172,11 @@ class Alarm:
         self.scheduler_thread = None
         self._alarms_lock = threading.Lock()
         self.gui_app = gui_app
+        self.active_fade_controller = None
         logger.info("Alarm manager initialized")
 
-    def set_alarm(self, time_str, playlist_name, playlist_uri, spotify_api, volume=80):
+    def set_alarm(self, time_str, playlist_name, playlist_uri, spotify_api, volume=80, 
+                   fade_in_enabled=False, fade_in_duration=10):
         """
         Schedule a new alarm.
 
@@ -71,13 +189,16 @@ class Alarm:
             playlist_uri: Spotify URI of the playlist to play.
             spotify_api: SpotifyAPI instance for playback control.
             volume: Volume level 0-100 (default 80).
+            fade_in_enabled: Whether to enable gradual volume fade-in (default False).
+            fade_in_duration: Fade-in duration in minutes, 5-30 (default 10).
 
         Raises:
             ValueError: If time format is invalid.
         """
         logger.info(
             f"Scheduling alarm - Time: {time_str}, Playlist: {playlist_name}, "
-            f"URI: {playlist_uri}, Volume: {volume}%"
+            f"URI: {playlist_uri}, Volume: {volume}%, "
+            f"Fade-in: {fade_in_enabled}, Duration: {fade_in_duration}min"
         )
 
         if not self._validate_time_format(time_str):
@@ -90,7 +211,9 @@ class Alarm:
             playlist_uri,
             spotify_api,
             volume,
-            playlist_name
+            playlist_name,
+            fade_in_enabled,
+            fade_in_duration
         )
 
         alarm_info = {
@@ -98,6 +221,8 @@ class Alarm:
             'playlist': playlist_name,
             'playlist_uri': playlist_uri,
             'volume': volume,
+            'fade_in_enabled': fade_in_enabled,
+            'fade_in_duration': fade_in_duration,
             'job': job
         }
         
@@ -154,20 +279,26 @@ class Alarm:
         self.scheduler_thread.start()
         logger.info("Alarm scheduler background thread initialized")
 
-    def play_playlist(self, playlist_uri, spotify_api, volume=80, playlist_name='Playlist'):
+    def play_playlist(self, playlist_uri, spotify_api, volume=80, playlist_name='Playlist',
+                     fade_in_enabled=False, fade_in_duration=10):
         """
         Play a playlist - called by scheduler when alarm triggers.
 
         Sets the volume first, then starts playlist playback with retry logic.
-        Auto-wakes Spotify device before playing.
+        Auto-wakes Spotify device before playing. Optionally starts fade-in.
 
         Args:
             playlist_uri: Spotify URI of playlist to play.
             spotify_api: SpotifyAPI instance for control.
             volume: Volume level 0-100.
             playlist_name: Name of playlist for notifications.
+            fade_in_enabled: Whether to enable gradual volume fade-in.
+            fade_in_duration: Fade-in duration in minutes.
         """
-        logger.info(f"Alarm triggered - Playing playlist: {playlist_name} ({playlist_uri}) at volume {volume}%")
+        logger.info(
+            f"Alarm triggered - Playing playlist: {playlist_name} ({playlist_uri}) "
+            f"at volume {volume}%, fade-in: {fade_in_enabled}"
+        )
 
         # Auto-wake Spotify device before alarm
         try:
@@ -180,11 +311,21 @@ class Alarm:
 
         for attempt in range(max_retries):
             try:
-                self._set_volume_with_retry(spotify_api, volume, max_retries=2)
+                # If fade-in is enabled, start at volume 0 and use controller
+                if fade_in_enabled and PYQT_AVAILABLE:
+                    self._set_volume_with_retry(spotify_api, 0, max_retries=2)
+                else:
+                    self._set_volume_with_retry(spotify_api, volume, max_retries=2)
 
                 spotify_api.play_playlist_by_uri(playlist_uri)
 
+                # Start fade-in if enabled
+                if fade_in_enabled and PYQT_AVAILABLE:
+                    self._start_fade_in(spotify_api, volume, fade_in_duration, playlist_name)
+                
                 success_msg = f'Alarm triggered successfully!\nPlaying: {playlist_name}'
+                if fade_in_enabled:
+                    success_msg += f'\nVolume fading in over {fade_in_duration} minutes'
                 self._show_notification('Alarm Success', success_msg, success=True)
                 logger.info(f"Successfully started playlist playback: {playlist_name}")
                 return
@@ -262,6 +403,38 @@ class Alarm:
                 else:
                     logger.warning(f"Failed to set volume after {max_retries} attempts: {e}. Continuing with playback attempt.")
                     pass
+    
+    def _start_fade_in(self, spotify_api, target_volume, duration_minutes, playlist_name):
+        """
+        Start gradual volume fade-in.
+        
+        Args:
+            spotify_api: SpotifyAPI instance for volume control.
+            target_volume: Final volume level (0-100).
+            duration_minutes: Fade-in duration in minutes.
+            playlist_name: Name of playlist for logging.
+        """
+        if not PYQT_AVAILABLE:
+            logger.warning("PyQt5 not available - cannot start fade-in")
+            return
+        
+        try:
+            # Stop any existing fade-in
+            if self.active_fade_controller and self.active_fade_controller.is_running():
+                self.active_fade_controller.stop()
+            
+            # Create new fade-in controller
+            self.active_fade_controller = FadeInController(
+                spotify_api, target_volume, duration_minutes
+            )
+            self.active_fade_controller.start()
+            
+            logger.info(
+                f"Started fade-in for {playlist_name}: "
+                f"{duration_minutes}min to {target_volume}%"
+            )
+        except Exception as e:
+            logger.error(f"Failed to start fade-in: {e}", exc_info=True)
 
     def _get_user_friendly_error(self, error_msg, playlist_name):
         """
@@ -354,6 +527,8 @@ class Alarm:
                 - playlist: Playlist name
                 - playlist_uri: Playlist URI
                 - volume: Volume percentage
+                - fade_in_enabled: Whether fade-in is enabled
+                - fade_in_duration: Fade-in duration in minutes
         """
         with self._alarms_lock:
             alarm_list = [
@@ -361,7 +536,9 @@ class Alarm:
                     'time': a['time'],
                     'playlist': a['playlist'],
                     'playlist_uri': a['playlist_uri'],
-                    'volume': a['volume']
+                    'volume': a['volume'],
+                    'fade_in_enabled': a.get('fade_in_enabled', False),
+                    'fade_in_duration': a.get('fade_in_duration', 10)
                 }
                 for a in self.alarms
             ]

@@ -1199,10 +1199,24 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         logger.info(f'User setting alarm: time={time_str}, playlist={playlist_name}, volume={volume}%')
 
-        try:
-            self.alarm.set_alarm(time_str, playlist_name, playlist_uri, self.spotify_api, volume)
+        # Show alarm setup dialog with fade-in options
+        dlg = AlarmSetupDialog(self, playlist_name, time_str, volume)
+        if dlg.exec_() != QDialog.Accepted:
+            return
+        
+        fade_in_enabled = dlg.fade_in_enabled
+        fade_in_duration = dlg.fade_in_duration
 
-            message = f'Alarm scheduled for {time_str}\n\nPlaylist: {playlist_name}\nVolume: {volume}%\n\nMake sure a Spotify device is active when the alarm triggers.'
+        try:
+            self.alarm.set_alarm(
+                time_str, playlist_name, playlist_uri, self.spotify_api, volume,
+                fade_in_enabled, fade_in_duration
+            )
+
+            message = f'Alarm scheduled for {time_str}\n\nPlaylist: {playlist_name}\nVolume: {volume}%'
+            if fade_in_enabled:
+                message += f'\nFade-in: {fade_in_duration} minutes'
+            message += '\n\nMake sure a Spotify device is active when the alarm triggers.'
             QMessageBox.information(self, 'Alarm Set Successfully', message)
             logger.info('Alarm set successfully by user')
 
@@ -1320,6 +1334,129 @@ class AlarmApp(QtWidgets.QMainWindow):
             self.tray_icon.hide()
 
 
+class AlarmSetupDialog(QDialog):
+    """
+    Dialog for configuring alarm settings including fade-in options.
+    
+    Allows user to configure:
+    - Enable/disable gradual volume fade-in
+    - Fade-in duration (5-30 minutes)
+    """
+    
+    def __init__(self, parent=None, playlist_name='', time_str='', volume=80):
+        """
+        Initialize the alarm setup dialog.
+        
+        Args:
+            parent: Parent widget.
+            playlist_name: Name of the playlist for the alarm.
+            time_str: Time string for the alarm.
+            volume: Target volume for the alarm.
+        """
+        super().__init__(parent)
+        self.setWindowTitle('Alarm Setup')
+        self.setMinimumWidth(400)
+        self.setModal(True)
+        
+        self.fade_in_enabled = False
+        self.fade_in_duration = 10
+        
+        self._build_ui(playlist_name, time_str, volume)
+    
+    def _build_ui(self, playlist_name, time_str, volume):
+        """Build the dialog UI."""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        
+        # Header
+        header = QLabel('Alarm Configuration')
+        header.setFont(QFont('Arial', 16, QFont.Bold))
+        layout.addWidget(header)
+        
+        # Alarm info
+        info_text = f'Playlist: {playlist_name}\nTime: {time_str}\nVolume: {volume}%'
+        info_label = QLabel(info_text)
+        info_label.setStyleSheet('color: #b3b3b3; padding: 10px; background: #1a1a1a; border-radius: 6px;')
+        layout.addWidget(info_label)
+        
+        # Separator
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        layout.addWidget(separator)
+        
+        # Fade-in section
+        fade_in_label = QLabel('Volume Fade-In')
+        fade_in_label.setFont(QFont('Arial', 14, QFont.Bold))
+        layout.addWidget(fade_in_label)
+        
+        # Fade-in checkbox
+        self.fade_in_checkbox = QCheckBox('Enable gradual volume fade-in')
+        self.fade_in_checkbox.setChecked(False)
+        self.fade_in_checkbox.toggled.connect(self._on_fade_in_toggled)
+        layout.addWidget(self.fade_in_checkbox)
+        
+        # Fade-in description
+        description = QLabel(
+            'Gradually increase volume from 0% to target volume over a specified duration.\n'
+            'Perfect for a gentle wake-up experience.'
+        )
+        description.setWordWrap(True)
+        description.setStyleSheet('color: #888; font-size: 12px; margin-left: 24px;')
+        layout.addWidget(description)
+        
+        # Fade-in duration controls
+        duration_widget = QWidget()
+        duration_layout = QHBoxLayout(duration_widget)
+        duration_layout.setContentsMargins(24, 8, 0, 0)
+        
+        duration_label = QLabel('Fade-in duration:')
+        duration_layout.addWidget(duration_label)
+        
+        self.duration_slider = QSlider(Qt.Horizontal)
+        self.duration_slider.setMinimum(5)
+        self.duration_slider.setMaximum(30)
+        self.duration_slider.setValue(10)
+        self.duration_slider.setTickPosition(QSlider.TicksBelow)
+        self.duration_slider.setTickInterval(5)
+        self.duration_slider.setEnabled(False)
+        self.duration_slider.valueChanged.connect(self._on_duration_changed)
+        duration_layout.addWidget(self.duration_slider, stretch=1)
+        
+        self.duration_value_label = QLabel('10 min')
+        self.duration_value_label.setFixedWidth(60)
+        self.duration_value_label.setStyleSheet('font-weight: 600;')
+        duration_layout.addWidget(self.duration_value_label)
+        
+        layout.addWidget(duration_widget)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        
+        btn_cancel = QPushButton('Cancel')
+        btn_cancel.clicked.connect(self.reject)
+        button_layout.addWidget(btn_cancel)
+        
+        btn_ok = QPushButton('Set Alarm')
+        btn_ok.setDefault(True)
+        btn_ok.clicked.connect(self.accept)
+        btn_ok.setStyleSheet('background-color: #1DB954; color: white; padding: 8px 24px; font-weight: bold;')
+        button_layout.addWidget(btn_ok)
+        
+        layout.addLayout(button_layout)
+    
+    def _on_fade_in_toggled(self, checked):
+        """Handle fade-in checkbox toggle."""
+        self.duration_slider.setEnabled(checked)
+        self.fade_in_enabled = checked
+    
+    def _on_duration_changed(self, value):
+        """Handle duration slider change."""
+        self.duration_value_label.setText(f'{value} min')
+        self.fade_in_duration = value
+
+
 class AlarmManagerDialog(QDialog):
     """
     Dialog to view and manage scheduled alarms.
@@ -1373,7 +1510,11 @@ class AlarmManagerDialog(QDialog):
         for row, alarm_info in enumerate(alarms):
             self.table.setItem(row, 0, QTableWidgetItem(alarm_info.get('time', '')))
             self.table.setItem(row, 1, QTableWidgetItem(alarm_info.get('playlist', '')))
-            self.table.setItem(row, 2, QTableWidgetItem(f"{alarm_info.get('volume', 80)}%"))
+            
+            volume_text = f"{alarm_info.get('volume', 80)}%"
+            if alarm_info.get('fade_in_enabled', False):
+                volume_text += f" (fade {alarm_info.get('fade_in_duration', 10)}min)"
+            self.table.setItem(row, 2, QTableWidgetItem(volume_text))
 
             btn_delete = QPushButton('Delete')
             btn_delete.clicked.connect(lambda checked, r=row: self._delete_alarm(r))
