@@ -261,6 +261,333 @@ class TestThreadSafeSpotifyAPIInit:
                 assert api._api.auth_manager is not None
 
 
+class TestSpotifyAPIPagination:
+    """Tests for SpotifyAPI.get_playlists_detailed() pagination logic."""
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    def test_get_playlists_detailed_multiple_pages(self, mock_spotify, mock_oauth):
+        """Should fetch all playlists across multiple pages using the next field."""
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        
+        page1 = {
+            'items': [
+                {
+                    'name': 'Playlist 1',
+                    'id': 'id1',
+                    'uri': 'spotify:playlist:id1',
+                    'tracks': {'total': 10},
+                    'images': [{'url': 'http://image1.jpg'}],
+                    'owner': {'display_name': 'Owner 1'}
+                },
+                {
+                    'name': 'Playlist 2',
+                    'id': 'id2',
+                    'uri': 'spotify:playlist:id2',
+                    'tracks': {'total': 20},
+                    'images': [{'url': 'http://image2.jpg'}],
+                    'owner': {'display_name': 'Owner 2'}
+                }
+            ],
+            'next': 'http://api.spotify.com/v1/playlists?offset=2'
+        }
+        
+        page2 = {
+            'items': [
+                {
+                    'name': 'Playlist 3',
+                    'id': 'id3',
+                    'uri': 'spotify:playlist:id3',
+                    'tracks': {'total': 30},
+                    'images': [{'url': 'http://image3.jpg'}],
+                    'owner': {'display_name': 'Owner 3'}
+                },
+                {
+                    'name': 'Playlist 4',
+                    'id': 'id4',
+                    'uri': 'spotify:playlist:id4',
+                    'tracks': {'total': 40},
+                    'images': [],
+                    'owner': {'display_name': 'Owner 4'}
+                }
+            ],
+            'next': 'http://api.spotify.com/v1/playlists?offset=4'
+        }
+        
+        page3 = {
+            'items': [
+                {
+                    'name': 'Playlist 5',
+                    'id': 'id5',
+                    'uri': 'spotify:playlist:id5',
+                    'tracks': {'total': 50},
+                    'images': [{'url': 'http://image5.jpg'}],
+                    'owner': {'display_name': 'Owner 5'}
+                }
+            ],
+            'next': None
+        }
+        
+        mock_sp_instance.current_user_playlists.return_value = page1
+        mock_sp_instance.next.side_effect = [page2, page3]
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'id',
+            'SPOTIPY_CLIENT_SECRET': 'secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                result = api.get_playlists_detailed()
+                
+                assert len(result) == 5
+                assert result[0]['name'] == 'Playlist 1'
+                assert result[0]['track_count'] == 10
+                assert result[0]['image_url'] == 'http://image1.jpg'
+                assert result[2]['name'] == 'Playlist 3'
+                assert result[3]['image_url'] is None
+                assert result[4]['name'] == 'Playlist 5'
+                
+                assert mock_sp_instance.current_user_playlists.call_count == 1
+                assert mock_sp_instance.next.call_count == 2
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    def test_get_playlists_detailed_single_page(self, mock_spotify, mock_oauth):
+        """Should handle single page response with no next field."""
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        
+        single_page = {
+            'items': [
+                {
+                    'name': 'Only Playlist',
+                    'id': 'id1',
+                    'uri': 'spotify:playlist:id1',
+                    'tracks': {'total': 15},
+                    'images': [{'url': 'http://image1.jpg'}],
+                    'owner': {'display_name': 'Owner 1'}
+                }
+            ],
+            'next': None
+        }
+        
+        mock_sp_instance.current_user_playlists.return_value = single_page
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'id',
+            'SPOTIPY_CLIENT_SECRET': 'secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                result = api.get_playlists_detailed()
+                
+                assert len(result) == 1
+                assert result[0]['name'] == 'Only Playlist'
+                assert result[0]['track_count'] == 15
+                
+                assert mock_sp_instance.current_user_playlists.call_count == 1
+                mock_sp_instance.next.assert_not_called()
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    def test_get_playlists_detailed_empty(self, mock_spotify, mock_oauth):
+        """Should handle empty playlist response correctly."""
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        
+        empty_page = {
+            'items': [],
+            'next': None
+        }
+        
+        mock_sp_instance.current_user_playlists.return_value = empty_page
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'id',
+            'SPOTIPY_CLIENT_SECRET': 'secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                result = api.get_playlists_detailed()
+                
+                assert len(result) == 0
+                assert result == []
+                
+                assert mock_sp_instance.current_user_playlists.call_count == 1
+                mock_sp_instance.next.assert_not_called()
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    def test_get_playlists_detailed_missing_fields(self, mock_spotify, mock_oauth):
+        """Should handle missing optional fields gracefully."""
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        
+        page_with_missing_fields = {
+            'items': [
+                {
+                    'id': 'id1',
+                    'uri': 'spotify:playlist:id1',
+                },
+                {
+                    'name': 'Playlist with Some Fields',
+                    'id': 'id2',
+                    'uri': 'spotify:playlist:id2',
+                    'tracks': {},
+                    'images': [],
+                    'owner': {}
+                }
+            ],
+            'next': None
+        }
+        
+        mock_sp_instance.current_user_playlists.return_value = page_with_missing_fields
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'id',
+            'SPOTIPY_CLIENT_SECRET': 'secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                result = api.get_playlists_detailed()
+                
+                assert len(result) == 2
+                assert result[0]['name'] == 'Unknown'
+                assert result[0]['track_count'] == 0
+                assert result[0]['image_url'] is None
+                assert result[0]['owner'] == 'Unknown'
+                
+                assert result[1]['name'] == 'Playlist with Some Fields'
+                assert result[1]['track_count'] == 0
+                assert result[1]['image_url'] is None
+                assert result[1]['owner'] == 'Unknown'
+    
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    def test_get_playlists_detailed_accumulates_correctly(self, mock_spotify, mock_oauth):
+        """Should correctly accumulate results from multiple pages without duplicates."""
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        mock_sp_instance = Mock()
+        
+        page1 = {
+            'items': [
+                {'name': 'A', 'id': 'a', 'uri': 'spotify:playlist:a', 'tracks': {'total': 1}, 'images': [], 'owner': {'display_name': 'User'}}
+            ],
+            'next': 'url1'
+        }
+        
+        page2 = {
+            'items': [
+                {'name': 'B', 'id': 'b', 'uri': 'spotify:playlist:b', 'tracks': {'total': 2}, 'images': [], 'owner': {'display_name': 'User'}}
+            ],
+            'next': 'url2'
+        }
+        
+        page3 = {
+            'items': [
+                {'name': 'C', 'id': 'c', 'uri': 'spotify:playlist:c', 'tracks': {'total': 3}, 'images': [], 'owner': {'display_name': 'User'}}
+            ],
+            'next': None
+        }
+        
+        mock_sp_instance.current_user_playlists.return_value = page1
+        mock_sp_instance.next.side_effect = [page2, page3]
+        mock_spotify.return_value = mock_sp_instance
+        
+        env_vars = {
+            'SPOTIPY_CLIENT_ID': 'id',
+            'SPOTIPY_CLIENT_SECRET': 'secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888/callback'
+        }
+        
+        with patch.dict(os.environ, env_vars, clear=True):
+            with patch('spotify_api.spotify_api.load_dotenv'):
+                import importlib
+                import spotify_api.spotify_api as api_module
+                importlib.reload(api_module)
+                
+                api = api_module.SpotifyAPI()
+                api.sp = mock_sp_instance
+                result = api.get_playlists_detailed()
+                
+                assert len(result) == 3
+                assert [p['name'] for p in result] == ['A', 'B', 'C']
+                assert [p['id'] for p in result] == ['a', 'b', 'c']
+                assert [p['track_count'] for p in result] == [1, 2, 3]
+
+
 class TestThreadSafeSpotifyAPIOperations:
     """Tests for ThreadSafeSpotifyAPI wrapper operations."""
     
