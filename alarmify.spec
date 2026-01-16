@@ -12,6 +12,10 @@ from pathlib import Path
 # Get the base path
 block_cipher = None
 
+# Check if version info file exists
+version_file_path = Path('version_info.txt')
+version_file = str(version_file_path) if version_file_path.exists() else None
+
 # Analysis: Collect all Python files and dependencies
 a = Analysis(
     ['main.py'],                    # Entry point script
@@ -22,6 +26,7 @@ a = Analysis(
         ('Logo First Draft.png', '.'),  # Include logo
         ('README.md', '.'),          # Include README
         ('LICENSE', '.'),            # Include license
+        ('cloud_sync', 'cloud_sync'),  # Include cloud_sync module
     ],
     hiddenimports=[
         'PyQt5.sip',                 # Required by PyQt5
@@ -35,6 +40,13 @@ a = Analysis(
         'schedule',                  # Scheduling library
         'urllib3',                   # HTTP library
         'certifi',                   # SSL certificates
+        'logging_config',            # Centralized logging configuration
+        'device_wake_manager',       # Device wake and reliability management
+        'cloud_sync',                # Cloud sync module
+        'cloud_sync.cloud_auth',     # Cloud authentication
+        'cloud_sync.cloud_sync_api', # Cloud sync API
+        'cloud_sync.cloud_sync_manager',  # Cloud sync manager
+        'cloud_sync.sync_conflict_resolver',  # Sync conflict resolution
     ],
     hookspath=[],                    # Custom hooks directory
     hooksconfig={},                  # Hook configuration
@@ -74,5 +86,5 @@ exe = EXE(
     codesign_identity=None,          # TODO: Add code signing identity
     entitlements_file=None,
     icon='Logo First Draft.png',     # Application icon
-    version_file=None,               # TODO: Add version info
+    version_file=version_file,       # Version info from version_info.txt
 )
