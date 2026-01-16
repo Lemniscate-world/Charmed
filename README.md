@@ -16,6 +16,7 @@ A PyQt5-based desktop application that wakes you up with your favorite Spotify p
 - 🧵 **Thread-Safe** - Concurrent alarm scheduling and GUI operations
 - 🖥️ **Device Management** - Automatic playback on your active Spotify device
 - 📊 **Alarm Manager** - View, edit, and delete scheduled alarms
+- 😴 **Snooze Functionality** - Configurable snooze intervals (5/10/15 minutes) with persistent state
 
 ## Screenshots
 
@@ -97,6 +98,27 @@ A PyQt5-based desktop application that wakes you up with your favorite Spotify p
    - Click "Manage Alarms" to view all scheduled alarms
    - Delete alarms you no longer need
    - Multiple alarms can be active simultaneously
+
+### Snooze Functionality
+
+When an alarm triggers, you have flexible snooze options:
+
+**Snooze Methods:**
+1. **Snooze Dialog** - Popup with three snooze duration buttons (5/10/15 min) or dismiss
+2. **System Tray Menu** - Right-click tray icon during active alarm for quick snooze access
+
+**Features:**
+- Configurable intervals: 5, 10, or 15 minutes
+- Persistent snooze state (survives app restarts)
+- Multiple simultaneous snoozed alarms supported
+- Fade-in settings preserved when snoozing
+- Visual indicators in system tray when alarm is snoozable
+- Snoozed alarms shown in Alarm Manager dialog
+
+**Persistent State:**
+- Snooze data saved to `~/.alarmify/snooze_state.json`
+- Automatically restored on app restart
+- Expired snoozes cleaned up automatically
 
 ### Using the Gradual Wake-Up Feature
 

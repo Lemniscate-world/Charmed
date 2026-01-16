@@ -33,9 +33,10 @@ Dependencies:
 import schedule  # Job scheduling library
 import time      # Time-related functions (sleep)
 import threading  # Background thread execution
-from datetime import datetime  # Date and time utilities
+from datetime import datetime, timedelta  # Date and time utilities
 import re
 import json
+import os
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import List, Optional
@@ -232,6 +233,11 @@ class TemplateManager:
         return None
 
 
+# Snooze configuration
+SNOOZE_INTERVALS = [5, 10, 15]  # Default snooze intervals in minutes
+DEFAULT_SNOOZE_DURATION = 5  # Default snooze duration in minutes
+
+
 if PYQT_AVAILABLE:
     class FadeInController(QObject):
         """
@@ -369,6 +375,9 @@ class Alarm:
         self._alarms_lock = threading.Lock()
         self.gui_app = gui_app
         self.active_fade_controller = None
+        self.snooze_state_file = Path.home() / '.alarmify' / 'snooze_state.json'
+        self._ensure_state_directory()
+        self._load_snooze_state()
         logger.info("Alarm manager initialized")
 
     def set_alarm(self, time_str, playlist_name, playlist_uri, spotify_api, volume=80, 
@@ -586,6 +595,130 @@ class Alarm:
         )
         self.scheduler_thread.start()
         logger.info("Alarm scheduler background thread initialized")
+
+    def _ensure_state_directory(self):
+        """Ensure the state directory exists."""
+        state_dir = self.snooze_state_file.parent
+        state_dir.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"State directory ensured at {state_dir}")
+
+    def _save_snooze_state(self):
+        """
+        Save snoozed alarms to persistent storage.
+        
+        Persists snooze state to JSON file so snoozed alarms survive app restarts.
+        """
+        try:
+            with self._alarms_lock:
+                state_data = []
+                for snooze in self.snoozed_alarms:
+                    state_data.append({
+                        'snooze_time': snooze['snooze_time'].isoformat(),
+                        'original_playlist': snooze['original_playlist'],
+                        'snooze_duration': snooze['snooze_duration'],
+                        'playlist_uri': snooze.get('playlist_uri'),
+                        'volume': snooze.get('volume', 80),
+                        'fade_in_enabled': snooze.get('fade_in_enabled', False),
+                        'fade_in_duration': snooze.get('fade_in_duration', 10)
+                    })
+                
+                with open(self.snooze_state_file, 'w', encoding='utf-8') as f:
+                    json.dump(state_data, f, indent=2, ensure_ascii=False)
+                
+                logger.debug(f"Saved {len(state_data)} snoozed alarms to {self.snooze_state_file}")
+        except Exception as e:
+            logger.error(f"Failed to save snooze state: {e}", exc_info=True)
+
+    def _load_snooze_state(self):
+        """
+        Load snoozed alarms from persistent storage.
+        
+        Restores snooze state from JSON file on app startup and reschedules
+        any snoozed alarms that haven't expired yet.
+        """
+        if not self.snooze_state_file.exists():
+            logger.debug("No snooze state file found")
+            return
+        
+        try:
+            with open(self.snooze_state_file, 'r', encoding='utf-8') as f:
+                state_data = json.load(f)
+            
+            with self._alarms_lock:
+                now = datetime.now()
+                loaded_count = 0
+                
+                for item in state_data:
+                    try:
+                        snooze_time = datetime.fromisoformat(item['snooze_time'])
+                        
+                        # Only load future snoozes
+                        if snooze_time > now:
+                            self.snoozed_alarms.append({
+                                'snooze_time': snooze_time,
+                                'original_playlist': item['original_playlist'],
+                                'snooze_duration': item['snooze_duration'],
+                                'playlist_uri': item.get('playlist_uri'),
+                                'volume': item.get('volume', 80),
+                                'fade_in_enabled': item.get('fade_in_enabled', False),
+                                'fade_in_duration': item.get('fade_in_duration', 10)
+                            })
+                            loaded_count += 1
+                        else:
+                            logger.debug(f"Skipping expired snooze from {snooze_time}")
+                    except (KeyError, ValueError) as e:
+                        logger.warning(f"Invalid snooze data in state file: {e}")
+                        continue
+                
+                logger.info(f"Loaded {loaded_count} snoozed alarms from state file")
+        except Exception as e:
+            logger.error(f"Failed to load snooze state: {e}", exc_info=True)
+
+    def reschedule_snoozed_alarms(self, spotify_api):
+        """
+        Reschedule snoozed alarms after Spotify API becomes available.
+        
+        Called after login to reschedule any snoozed alarms that were loaded
+        from persistent storage but couldn't be scheduled yet.
+        
+        Args:
+            spotify_api: SpotifyAPI instance for playback control.
+        """
+        with self._alarms_lock:
+            snoozed = self.snoozed_alarms.copy()
+        
+        for snooze in snoozed:
+            try:
+                playlist_uri = snooze.get('playlist_uri')
+                playlist_name = snooze.get('original_playlist', 'Snoozed Playlist')
+                volume = snooze.get('volume', 80)
+                fade_in_enabled = snooze.get('fade_in_enabled', False)
+                fade_in_duration = snooze.get('fade_in_duration', 10)
+                
+                if playlist_uri:
+                    snooze_time = snooze['snooze_time']
+                    time_str = snooze_time.strftime('%H:%M')
+                    
+                    # Remove from snoozed list and schedule as regular alarm
+                    with self._alarms_lock:
+                        if snooze in self.snoozed_alarms:
+                            self.snoozed_alarms.remove(snooze)
+                    
+                    self.set_alarm(
+                        time_str, 
+                        playlist_name, 
+                        playlist_uri, 
+                        spotify_api, 
+                        volume=volume,
+                        fade_in_enabled=fade_in_enabled,
+                        fade_in_duration=fade_in_duration
+                    )
+                    logger.info(f"Rescheduled snoozed alarm for {time_str}")
+            except Exception as e:
+                logger.error(f"Failed to reschedule snoozed alarm: {e}", exc_info=True)
+        
+        self._ensure_scheduler_running()
+        self._save_snooze_state()
 
     def play_playlist(self, playlist_uri, spotify_api, volume=80, playlist_name='Playlist',
                      fade_in_enabled=False, fade_in_duration=10):
@@ -971,7 +1104,11 @@ class Alarm:
             'snooze_time': snooze_time,
             'original_playlist': alarm_data.get('playlist_name'),
             'snooze_duration': snooze_minutes,
-            'job': job
+            'job': job,
+            'playlist_uri': alarm_data.get('playlist_uri'),
+            'volume': alarm_data.get('volume', 80),
+            'fade_in_enabled': alarm_data.get('fade_in_enabled', False),
+            'fade_in_duration': alarm_data.get('fade_in_duration', 10)
         }
         
         with self._alarms_lock:
@@ -982,6 +1119,7 @@ class Alarm:
             )
         
         self._ensure_scheduler_running()
+        self._save_snooze_state()
 
     def get_snoozed_alarms(self):
         """
@@ -1008,10 +1146,16 @@ class Alarm:
             ]
             
             # Clean up expired snoozes
+            original_count = len(self.snoozed_alarms)
             self.snoozed_alarms = [
                 s for s in self.snoozed_alarms
                 if s['snooze_time'] > now
             ]
+            expired_count = original_count - len(self.snoozed_alarms)
+            
+            if expired_count > 0:
+                logger.debug(f"Cleaned up {expired_count} expired snoozed alarm(s)")
+                self._save_snooze_state()
             
             logger.debug(f"Retrieved {len(active_snoozes)} active snoozed alarms")
             return active_snoozes
@@ -1021,9 +1165,13 @@ class Alarm:
         Gracefully shutdown the alarm scheduler.
 
         Stops the scheduler thread, cancels all scheduled jobs,
-        and cleans up resources. Should be called before application exit.
+        and cleans up resources. Saves snooze state before exit.
         """
         logger.info("Initiating alarm scheduler shutdown")
+        
+        # Save snooze state before shutdown
+        self._save_snooze_state()
+        
         if self.scheduler_running:
             self.scheduler_running = False
             

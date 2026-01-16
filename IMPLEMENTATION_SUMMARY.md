@@ -4,6 +4,140 @@ This document summarizes all major implementations in the Alarmify project.
 
 ---
 
+## Snooze Functionality ✅
+
+**Status:** Fully Implemented  
+**Date:** Latest Feature
+
+### Overview
+Complete snooze functionality with configurable intervals (5/10/15 minutes), system tray integration, persistent state management, and seamless notification integration.
+
+### Key Features
+
+1. **Configurable Snooze Intervals**
+   - 5 minutes (quick snooze)
+   - 10 minutes (standard)
+   - 15 minutes (extended)
+   - Configurable via `SNOOZE_INTERVALS` constant in `alarm.py`
+
+2. **Multiple Access Methods**
+   - **Snooze Dialog**: Popup when alarm triggers with three buttons
+   - **System Tray Menu**: Right-click tray icon for snooze options
+   - **Dismiss Option**: Cancel alarm without snoozing
+
+3. **Persistent State Management**
+   - Location: `~/.alarmify/snooze_state.json`
+   - Automatic save on snooze
+   - Automatic restore on app startup
+   - Expired snoozes cleaned automatically
+   - Thread-safe with locking
+
+4. **System Tray Integration**
+   - Dynamic menu with snooze options (⏰ emoji icons)
+   - Options shown only during active alarm
+   - Dismiss button with ❌ icon
+   - Notification feedback on snooze/dismiss
+   - Automatic hide after action
+
+5. **Alarm Manager Integration**
+   - Separate table for snoozed alarms
+   - Shows: trigger time, playlist, duration
+   - Real-time updates
+
+6. **Fade-in Preservation**
+   - Snoozed alarms preserve original settings
+   - Fade-in enabled/duration maintained
+   - Volume settings preserved
+
+### Technical Implementation
+
+**Core Files Modified:**
+- `alarm.py` - Snooze logic, persistence, scheduling
+- `gui.py` - System tray integration, snooze dialog
+
+**Key Methods:**
+
+`alarm.py`:
+- `Alarm.snooze_alarm()` - Schedule snooze
+- `Alarm._save_snooze_state()` - Persist to JSON
+- `Alarm._load_snooze_state()` - Restore from JSON
+- `Alarm.reschedule_snoozed_alarms()` - Reschedule after login
+- `Alarm.get_snoozed_alarms()` - Get active snoozes
+
+`gui.py`:
+- `AlarmApp._show_snooze_in_tray()` - Show tray options
+- `AlarmApp._hide_snooze_from_tray()` - Hide tray options
+- `AlarmApp._snooze_from_tray()` - Snooze from tray
+- `AlarmApp._dismiss_alarm_from_tray()` - Dismiss alarm
+- `SnoozeNotificationDialog._snooze()` - Dialog snooze handler
+
+### Configuration
+
+```python
+# In alarm.py
+SNOOZE_INTERVALS = [5, 10, 15]  # Snooze durations in minutes
+DEFAULT_SNOOZE_DURATION = 5  # Default if not specified
+```
+
+### Persistent Storage
+
+**JSON Structure:**
+```json
+[
+  {
+    "snooze_time": "2024-01-15T08:15:00",
+    "original_playlist": "Morning Vibes",
+    "snooze_duration": 10,
+    "playlist_uri": "spotify:playlist:abc123",
+    "volume": 80,
+    "fade_in_enabled": true,
+    "fade_in_duration": 15
+  }
+]
+```
+
+**Storage Locations:**
+- Windows: `C:\Users\<username>\.alarmify\snooze_state.json`
+- Linux/Mac: `~/.alarmify/snooze_state.json`
+
+### Usage Flow
+
+1. **Alarm Triggers**
+   - Spotify playlist plays
+   - SnoozeNotificationDialog appears
+   - System tray menu shows snooze options
+
+2. **User Snoozes**
+   - Selects duration (5/10/15 min) from dialog or tray
+   - OR dismisses alarm
+   - Confirmation notification shown
+
+3. **Snooze Scheduled**
+   - New job created for snooze time
+   - State saved to JSON
+   - Added to snoozed alarms list
+   - Visible in Alarm Manager
+
+4. **Snooze Triggers**
+   - Plays original playlist
+   - Same volume and fade-in settings
+   - Can snooze again or dismiss
+
+5. **App Restart**
+   - Loads snooze state from JSON
+   - Restores snoozed alarms
+   - Reschedules jobs after Spotify login
+
+### Testing Coverage
+
+Tests in `tests/test_alarm.py`:
+- `TestSnoozeAlarm` - Snooze scheduling tests
+- `TestGetSnoozedAlarms` - Retrieval and filtering tests
+- `TestShutdownWithSnooze` - Persistence tests
+- `test_snooze_with_fade_in` - Fade-in preservation
+
+---
+
 ## Charm-Inspired UI Redesign
 
 ### What Was Implemented

@@ -340,6 +340,7 @@ class AlarmApp(QtWidgets.QMainWindow):
             logger.info('Auto-loading playlists (cached authentication)')
             self._load_playlists()
             self._refresh_devices()
+            self.alarm.reschedule_snoozed_alarms(self.spotify_api)
 
     def _load_custom_fonts(self):
         """Load custom fonts (Inter and JetBrains Mono)."""
@@ -593,30 +594,129 @@ class AlarmApp(QtWidgets.QMainWindow):
         tray_icon_pixmap = QPixmap.fromImage(tray_icon_image)
         self.tray_icon.setIcon(QIcon(tray_icon_pixmap))
 
-        tray_menu = QMenu()
+        self.tray_menu = QMenu()
         
         show_action = QAction("Show", self)
         show_action.triggered.connect(self._show_window)
-        tray_menu.addAction(show_action)
+        self.tray_menu.addAction(show_action)
         
         hide_action = QAction("Hide", self)
         hide_action.triggered.connect(self.hide)
-        tray_menu.addAction(hide_action)
+        self.tray_menu.addAction(hide_action)
         
-        tray_menu.addSeparator()
+        self.tray_menu.addSeparator()
+        
+        # Snooze section (initially hidden, shown when alarm triggers)
+        self.snooze_section_separator = self.tray_menu.addSeparator()
+        self.snooze_section_separator.setVisible(False)
+        
+        self.snooze_5min_action = QAction("⏰ Snooze 5 minutes", self)
+        self.snooze_5min_action.triggered.connect(lambda: self._snooze_from_tray(5))
+        self.tray_menu.addAction(self.snooze_5min_action)
+        self.snooze_5min_action.setVisible(False)
+        
+        self.snooze_10min_action = QAction("⏰ Snooze 10 minutes", self)
+        self.snooze_10min_action.triggered.connect(lambda: self._snooze_from_tray(10))
+        self.tray_menu.addAction(self.snooze_10min_action)
+        self.snooze_10min_action.setVisible(False)
+        
+        self.snooze_15min_action = QAction("⏰ Snooze 15 minutes", self)
+        self.snooze_15min_action.triggered.connect(lambda: self._snooze_from_tray(15))
+        self.tray_menu.addAction(self.snooze_15min_action)
+        self.snooze_15min_action.setVisible(False)
+        
+        self.dismiss_alarm_action = QAction("❌ Dismiss Alarm", self)
+        self.dismiss_alarm_action.triggered.connect(self._dismiss_alarm_from_tray)
+        self.tray_menu.addAction(self.dismiss_alarm_action)
+        self.dismiss_alarm_action.setVisible(False)
+        
+        self.snooze_bottom_separator = self.tray_menu.addSeparator()
+        self.snooze_bottom_separator.setVisible(False)
+        
+        self.tray_menu.addSeparator()
         
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self._quit_application)
-        tray_menu.addAction(quit_action)
+        self.tray_menu.addAction(quit_action)
         
-        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.activated.connect(self._tray_icon_activated)
         self.tray_icon.show()
+        
+        # Store current alarm data for snooze
+        self.current_alarm_data = None
 
     def _tray_icon_activated(self, reason):
         """Handle tray icon clicks."""
         if reason == QSystemTrayIcon.DoubleClick:
             self._show_window()
+    
+    def _show_snooze_in_tray(self, alarm_data):
+        """
+        Show snooze options in system tray menu.
+        
+        Args:
+            alarm_data: Alarm data dictionary for snooze functionality.
+        """
+        self.current_alarm_data = alarm_data
+        
+        self.snooze_section_separator.setVisible(True)
+        self.snooze_5min_action.setVisible(True)
+        self.snooze_10min_action.setVisible(True)
+        self.snooze_15min_action.setVisible(True)
+        self.dismiss_alarm_action.setVisible(True)
+        self.snooze_bottom_separator.setVisible(True)
+        
+        logger.info("Snooze options shown in system tray menu")
+    
+    def _hide_snooze_from_tray(self):
+        """Hide snooze options from system tray menu."""
+        self.snooze_section_separator.setVisible(False)
+        self.snooze_5min_action.setVisible(False)
+        self.snooze_10min_action.setVisible(False)
+        self.snooze_15min_action.setVisible(False)
+        self.dismiss_alarm_action.setVisible(False)
+        self.snooze_bottom_separator.setVisible(False)
+        
+        self.current_alarm_data = None
+        
+        logger.info("Snooze options hidden from system tray menu")
+    
+    def _snooze_from_tray(self, minutes):
+        """
+        Snooze alarm from system tray.
+        
+        Args:
+            minutes: Number of minutes to snooze.
+        """
+        if not self.current_alarm_data:
+            logger.warning("No alarm data available for snooze")
+            return
+        
+        logger.info(f"Snoozing alarm for {minutes} minutes from system tray")
+        
+        if self.alarm:
+            self.alarm.snooze_alarm(self.current_alarm_data, minutes)
+            self.tray_icon.showMessage(
+                'Alarm Snoozed',
+                f'Alarm snoozed for {minutes} minutes',
+                QSystemTrayIcon.Information,
+                3000
+            )
+        
+        self._hide_snooze_from_tray()
+    
+    def _dismiss_alarm_from_tray(self):
+        """Dismiss alarm from system tray."""
+        logger.info("Dismissing alarm from system tray")
+        self._hide_snooze_from_tray()
+        
+        self.tray_icon.showMessage(
+            'Alarm Dismissed',
+            'Alarm dismissed',
+            QSystemTrayIcon.Information,
+            2000
+        )
 
     def show_tray_notification(self, title, message, icon_type=QSystemTrayIcon.Information):
         """
@@ -645,6 +745,9 @@ class AlarmApp(QtWidgets.QMainWindow):
         dlg.show()
         dlg.raise_()
         dlg.activateWindow()
+        
+        # Show snooze options in system tray
+        self._show_snooze_in_tray(alarm_data)
         
         # Also show tray notification
         if hasattr(self, 'tray_icon') and self.tray_icon:
@@ -803,6 +906,7 @@ class AlarmApp(QtWidgets.QMainWindow):
             self._load_playlists()
             self._refresh_devices()
             self._update_device_status()
+            self.alarm.reschedule_snoozed_alarms(self.spotify_api)
             logger.info('Spotify login successful')
 
         except Exception as e:
@@ -1402,6 +1506,10 @@ class SnoozeNotificationDialog(QDialog):
         
         if self.parent_app and hasattr(self.parent_app, 'alarm'):
             self.parent_app.alarm.snooze_alarm(self.alarm_data, minutes)
+            
+            # Hide snooze from tray since dialog handled it
+            if hasattr(self.parent_app, '_hide_snooze_from_tray'):
+                self.parent_app._hide_snooze_from_tray()
             
             snooze_msg = f'Alarm snoozed for {minutes} minutes'
             QMessageBox.information(self, 'Snoozed', snooze_msg)
