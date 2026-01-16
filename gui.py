@@ -332,9 +332,11 @@ class AlarmApp(QtWidgets.QMainWindow):
         self._update_auth_status()
         self._start_device_status_monitor()
         
-        self.alarm_preview_timer = QTimer(self)
-        self.alarm_preview_timer.timeout.connect(self._update_alarm_preview)
-        self.alarm_preview_timer.start(30000)
+        self.alarm_countdown_timer = QTimer(self)
+        self.alarm_countdown_timer.timeout.connect(self._update_next_alarm_display)
+        self.alarm_countdown_timer.start(1000)
+        
+        self._update_next_alarm_display()
 
         if self.spotify_api and self.spotify_api.is_authenticated():
             logger.info('Auto-loading playlists (cached authentication)')
@@ -516,9 +518,63 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.time_input.setAlignment(Qt.AlignCenter)
         right_panel.addWidget(self.time_input)
 
-        self.alarm_preview_label = QLabel('Next alarm: None')
-        self.alarm_preview_label.setStyleSheet("color: #727272; font-style: italic; font-size: 12px;")
-        right_panel.addWidget(self.alarm_preview_label)
+        next_alarm_container = QWidget()
+        next_alarm_container.setObjectName('nextAlarmContainer')
+        next_alarm_layout = QVBoxLayout(next_alarm_container)
+        next_alarm_layout.setContentsMargins(16, 12, 16, 12)
+        next_alarm_layout.setSpacing(8)
+        
+        next_alarm_header = QHBoxLayout()
+        next_alarm_title = QLabel('Next Alarm')
+        next_alarm_title.setFont(QFont('Inter', 12, QFont.Bold))
+        next_alarm_title.setStyleSheet('color: #1DB954;')
+        next_alarm_header.addWidget(next_alarm_title)
+        next_alarm_header.addStretch()
+        
+        self.preview_button = QPushButton('View All')
+        self.preview_button.setObjectName('previewButton')
+        self.preview_button.setToolTip('View all upcoming alarms')
+        self.preview_button.clicked.connect(self.open_alarm_preview)
+        self.preview_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2a2a2a;
+                color: #1DB954;
+                border: 1px solid #1DB954;
+                border-radius: 4px;
+                padding: 4px 12px;
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QPushButton:hover {
+                background-color: #1DB954;
+                color: #000000;
+            }
+        """)
+        next_alarm_header.addWidget(self.preview_button)
+        
+        next_alarm_layout.addLayout(next_alarm_header)
+        
+        self.next_alarm_time_label = QLabel('--:--')
+        self.next_alarm_time_label.setFont(QFont('JetBrains Mono', 20, QFont.Bold))
+        self.next_alarm_time_label.setStyleSheet('color: #ffffff;')
+        next_alarm_layout.addWidget(self.next_alarm_time_label)
+        
+        self.next_alarm_countdown_label = QLabel('No alarms scheduled')
+        self.next_alarm_countdown_label.setFont(QFont('Inter', 11))
+        self.next_alarm_countdown_label.setStyleSheet('color: #888888;')
+        next_alarm_layout.addWidget(self.next_alarm_countdown_label)
+        
+        next_alarm_container.setStyleSheet("""
+            #nextAlarmContainer {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(29, 185, 84, 0.15),
+                    stop:1 rgba(29, 185, 84, 0.05));
+                border: 1px solid rgba(29, 185, 84, 0.3);
+                border-radius: 8px;
+            }
+        """)
+        
+        right_panel.addWidget(next_alarm_container)
 
         volume_label = QLabel('Alarm Volume')
         volume_label.setObjectName('sectionHeader')
@@ -834,13 +890,41 @@ class AlarmApp(QtWidgets.QMainWindow):
             self.connection_status_label.setText('Disconnected')
             self.device_status_label.setText('')
 
-    def _update_alarm_preview(self):
-        """Update the next alarm preview label."""
-        next_alarm = self.alarm.get_next_alarm_time()
-        if next_alarm:
-            self.alarm_preview_label.setText(f'Next alarm: {next_alarm}')
+    def _update_next_alarm_display(self):
+        """Update the next alarm display with time and countdown."""
+        next_datetime = self.alarm.get_next_alarm_datetime()
+        
+        if next_datetime:
+            time_str = next_datetime.strftime('%H:%M')
+            self.next_alarm_time_label.setText(time_str)
+            
+            now = datetime.now()
+            delta = next_datetime - now
+            
+            total_seconds = int(delta.total_seconds())
+            if total_seconds < 0:
+                self.next_alarm_countdown_label.setText('Alarm triggering...')
+                return
+            
+            hours = total_seconds // 3600
+            minutes = (total_seconds % 3600) // 60
+            seconds = total_seconds % 60
+            
+            if hours > 48:
+                days = hours // 24
+                countdown_text = f'in {days} day{"s" if days != 1 else ""}'
+            elif hours > 0:
+                countdown_text = f'in {hours}h {minutes}m {seconds}s'
+            elif minutes > 0:
+                countdown_text = f'in {minutes}m {seconds}s'
+            else:
+                countdown_text = f'in {seconds}s'
+            
+            date_str = next_datetime.strftime('%a, %b %d')
+            self.next_alarm_countdown_label.setText(f'{countdown_text} • {date_str}')
         else:
-            self.alarm_preview_label.setText('Next alarm: None')
+            self.next_alarm_time_label.setText('--:--')
+            self.next_alarm_countdown_label.setText('No alarms scheduled')
 
     def _refresh_devices(self):
         """Refresh the device selector with available Spotify devices."""
@@ -1028,7 +1112,13 @@ class AlarmApp(QtWidgets.QMainWindow):
         logger.info('Opening alarm manager')
         dlg = AlarmManagerDialog(self.alarm, self)
         dlg.exec_()
-        self._update_alarm_preview()
+        self._update_next_alarm_display()
+    
+    def open_alarm_preview(self):
+        """Open the alarm preview dialog showing upcoming alarms."""
+        logger.info('Opening alarm preview dialog')
+        dlg = AlarmPreviewDialog(self.alarm, self)
+        dlg.exec_()
 
     def open_log_viewer(self):
         """Open the log viewer dialog."""
@@ -1215,7 +1305,7 @@ class AlarmApp(QtWidgets.QMainWindow):
                 'Please check your settings and try again.'
             )
         
-        self._update_alarm_preview()
+        self._update_next_alarm_display()
 
     def _format_days_display(self, days):
         """
@@ -1325,6 +1415,9 @@ class AlarmApp(QtWidgets.QMainWindow):
         """Clean up all background threads and resources."""
         if hasattr(self, 'device_status_timer'):
             self.device_status_timer.stop()
+        
+        if hasattr(self, 'alarm_countdown_timer'):
+            self.alarm_countdown_timer.stop()
 
         for loader in self.image_loaders:
             if loader.isRunning():
@@ -2955,6 +3048,155 @@ class LogViewerDialog(QDialog):
                 'Error',
                 f'Could not open log folder: {e}'
             )
+
+
+class AlarmPreviewDialog(QDialog):
+    """
+    Dialog to preview all upcoming alarms for the next 7 days.
+    
+    Shows a list of all scheduled alarm triggers with:
+    - Date and time
+    - Day of week
+    - Playlist name
+    - Volume and fade-in settings
+    """
+    
+    def __init__(self, alarm_manager, parent=None):
+        """
+        Initialize the alarm preview dialog.
+        
+        Args:
+            alarm_manager: Alarm instance containing scheduled alarms.
+            parent: Parent widget.
+        """
+        super().__init__(parent)
+        self.alarm_manager = alarm_manager
+        self.setWindowTitle('Upcoming Alarms - Next 7 Days')
+        self.setMinimumSize(700, 600)
+        self.setModal(True)
+        
+        self._build_ui()
+        self._load_upcoming_alarms()
+    
+    def _build_ui(self):
+        """Build the dialog UI."""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+        
+        header = QLabel('Upcoming Alarms')
+        header.setFont(QFont('Inter', 18, QFont.Bold))
+        layout.addWidget(header)
+        
+        description = QLabel('All scheduled alarm triggers for the next 7 days:')
+        description.setStyleSheet('color: #b3b3b3; padding: 8px;')
+        layout.addWidget(description)
+        
+        self.table = QTableWidget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels([
+            'Date & Time', 'Day', 'Playlist', 'Volume', 'Days Active'
+        ])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setAlternatingRowColors(True)
+        layout.addWidget(self.table)
+        
+        button_layout = QHBoxLayout()
+        
+        btn_refresh = QPushButton('Refresh')
+        btn_refresh.clicked.connect(self._load_upcoming_alarms)
+        button_layout.addWidget(btn_refresh)
+        
+        button_layout.addStretch()
+        
+        btn_close = QPushButton('Close')
+        btn_close.clicked.connect(self.accept)
+        btn_close.setStyleSheet('background-color: #1DB954; color: white; padding: 8px 24px; font-weight: bold;')
+        button_layout.addWidget(btn_close)
+        
+        layout.addLayout(button_layout)
+    
+    def _load_upcoming_alarms(self):
+        """Load and display all upcoming alarms."""
+        upcoming = self.alarm_manager.get_upcoming_alarms(days=7)
+        self.table.setRowCount(len(upcoming))
+        
+        if not upcoming:
+            self.table.setRowCount(1)
+            no_alarms_item = QTableWidgetItem('No upcoming alarms in the next 7 days')
+            no_alarms_item.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(0, 0, no_alarms_item)
+            self.table.setSpan(0, 0, 1, 5)
+            return
+        
+        for row, entry in enumerate(upcoming):
+            trigger_datetime = entry['datetime']
+            alarm_info = entry['alarm_info']
+            
+            # Format date and time
+            date_str = trigger_datetime.strftime('%Y-%m-%d')
+            time_str = trigger_datetime.strftime('%H:%M')
+            datetime_str = f'{date_str} {time_str}'
+            
+            # Get day of week
+            day_name = trigger_datetime.strftime('%A')
+            
+            # Format date/time item with relative time
+            now = datetime.now()
+            delta = trigger_datetime - now
+            hours = int(delta.total_seconds() // 3600)
+            minutes = int((delta.total_seconds() % 3600) // 60)
+            
+            if hours < 24:
+                relative = f'in {hours}h {minutes}m'
+            else:
+                days = hours // 24
+                relative = f'in {days} day{"s" if days != 1 else ""}'
+            
+            datetime_display = f'{datetime_str}\n({relative})'
+            
+            self.table.setItem(row, 0, QTableWidgetItem(datetime_display))
+            self.table.setItem(row, 1, QTableWidgetItem(day_name))
+            self.table.setItem(row, 2, QTableWidgetItem(alarm_info.get('playlist', 'Unknown')))
+            
+            # Volume and fade-in
+            volume_text = f"{alarm_info.get('volume', 80)}%"
+            if alarm_info.get('fade_in_enabled', False):
+                volume_text += f"\n(fade {alarm_info.get('fade_in_duration', 10)}min)"
+            self.table.setItem(row, 3, QTableWidgetItem(volume_text))
+            
+            # Days active
+            days_display = self._format_days_display(alarm_info.get('days'))
+            self.table.setItem(row, 4, QTableWidgetItem(days_display))
+            
+            # Highlight next alarm (first row)
+            if row == 0:
+                for col in range(5):
+                    item = self.table.item(row, col)
+                    if item:
+                        item.setBackground(QColor('#1DB954').lighter(150))
+    
+    def _format_days_display(self, days):
+        """Format days list for display."""
+        if days is None:
+            return 'Every day'
+        
+        if len(days) == 7:
+            return 'Every day'
+        
+        if set(days) == {'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'}:
+            return 'Weekdays'
+        
+        if set(days) == {'Saturday', 'Sunday'}:
+            return 'Weekends'
+        
+        abbrev = {
+            'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed',
+            'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat', 'Sunday': 'Sun'
+        }
+        
+        return ', '.join([abbrev.get(day, day) for day in days])
 
 
 class CrashReportDialog(QDialog):

@@ -1057,6 +1057,54 @@ class Alarm:
             logger.debug(f"Retrieved {len(alarm_list)} alarms")
             return alarm_list
 
+    def get_next_trigger_time(self, alarm_info):
+        """
+        Calculate the next trigger time for a specific alarm considering day restrictions.
+        
+        Args:
+            alarm_info: Alarm information dictionary.
+        
+        Returns:
+            datetime: Next trigger datetime, or None if alarm won't trigger in the next 7 days.
+        """
+        time_str = alarm_info.get('time')
+        active_days = alarm_info.get('days')
+        
+        if not time_str:
+            return None
+        
+        try:
+            hours, minutes = map(int, time_str.split(':'))
+        except (ValueError, AttributeError):
+            return None
+        
+        now = datetime.now()
+        current_date = now.date()
+        current_time = now.time()
+        
+        # If no day restrictions, find next occurrence today or tomorrow
+        if active_days is None:
+            trigger_time = datetime.combine(current_date, datetime.strptime(time_str, '%H:%M').time())
+            if trigger_time <= now:
+                trigger_time += timedelta(days=1)
+            return trigger_time
+        
+        # Check each day in the next 7 days
+        for days_ahead in range(8):
+            check_date = current_date + timedelta(days=days_ahead)
+            check_day_name = check_date.strftime('%A')
+            
+            if check_day_name in active_days:
+                trigger_time = datetime.combine(check_date, datetime.strptime(time_str, '%H:%M').time())
+                
+                # If it's today, only include if the time hasn't passed
+                if days_ahead == 0 and trigger_time <= now:
+                    continue
+                
+                return trigger_time
+        
+        return None
+
     def get_next_alarm_time(self):
         """
         Get the next scheduled alarm trigger time.
@@ -1084,6 +1132,79 @@ class Alarm:
                     return "soon"
             
             return None
+    
+    def get_next_alarm_datetime(self):
+        """
+        Get the datetime of the next scheduled alarm.
+        
+        Returns:
+            datetime: Next alarm datetime, or None if no alarms.
+        """
+        with self._alarms_lock:
+            if not self.alarms:
+                return None
+            
+            next_triggers = []
+            for alarm in self.alarms:
+                next_trigger = self.get_next_trigger_time(alarm)
+                if next_trigger:
+                    next_triggers.append(next_trigger)
+            
+            if next_triggers:
+                return min(next_triggers)
+            
+            return None
+    
+    def get_upcoming_alarms(self, days=7):
+        """
+        Get all upcoming alarm triggers for the next N days.
+        
+        Args:
+            days: Number of days to look ahead (default 7).
+        
+        Returns:
+            list: List of dicts with keys 'datetime', 'alarm_info' sorted by datetime.
+        """
+        with self._alarms_lock:
+            upcoming = []
+            now = datetime.now()
+            end_date = now + timedelta(days=days)
+            
+            for alarm in self.alarms:
+                time_str = alarm.get('time')
+                active_days = alarm.get('days')
+                
+                if not time_str:
+                    continue
+                
+                try:
+                    hours, minutes = map(int, time_str.split(':'))
+                except (ValueError, AttributeError):
+                    continue
+                
+                # Check each day in the range
+                current_date = now.date()
+                for day_offset in range(days + 1):
+                    check_date = current_date + timedelta(days=day_offset)
+                    check_day_name = check_date.strftime('%A')
+                    
+                    # Check if alarm is active on this day
+                    if active_days is None or check_day_name in active_days:
+                        trigger_time = datetime.combine(
+                            check_date, 
+                            datetime.strptime(time_str, '%H:%M').time()
+                        )
+                        
+                        # Only include future triggers
+                        if trigger_time > now and trigger_time <= end_date:
+                            upcoming.append({
+                                'datetime': trigger_time,
+                                'alarm_info': alarm
+                            })
+            
+            # Sort by datetime
+            upcoming.sort(key=lambda x: x['datetime'])
+            return upcoming
 
     def remove_alarm(self, time_str):
         """
