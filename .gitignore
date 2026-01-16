@@ -55,3 +55,7 @@ htmlcov/
 
 # GitHub Actions
 .github/actions-cache/
+
+# Generated icons (from icon_generator.py)
+alarmify_icon_*.png
+tray_icon_*.png

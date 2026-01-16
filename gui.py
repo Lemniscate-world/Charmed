@@ -48,8 +48,8 @@ from PyQt5.QtWidgets import (
     QTextEdit,
     QFileDialog
 )
-from PyQt5.QtGui import QFont, QPixmap, QIcon, QPalette, QColor
-from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QByteArray, QTimer
+from PyQt5.QtGui import QFont, QPixmap, QIcon, QPalette, QColor, QFontDatabase
+from PyQt5.QtCore import Qt, QSize, QThread, pyqtSignal, QByteArray, QTimer, QPropertyAnimation, QEasingCurve
 from pathlib import Path
 import os
 import requests
@@ -63,6 +63,9 @@ import sys
 from spotify_api.spotify_api import ThreadSafeSpotifyAPI  # Thread-safe Spotify API wrapper
 from alarm import Alarm  # Alarm scheduling
 from logging_config import get_logger, get_log_files, read_log_file, get_current_log_file
+from charm_stylesheet import get_stylesheet
+from charm_animations import AnimationBuilder, apply_entrance_animations
+from icon_generator import generate_icon_image, generate_tray_icon
 
 logger = get_logger(__name__)
 
@@ -145,21 +148,22 @@ class PlaylistItemWidget(QWidget):
 
         self.playlist_data = playlist_data
         self._is_hovered = False
+        self.hover_animation = None
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(12)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(16)
 
         self.image_label = QLabel()
         self.image_label.setFixedSize(72, 72)
         self.image_label.setStyleSheet(
-            "background-color: #282828; border-radius: 6px;"
+            "background: rgba(40, 40, 40, 0.7); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);"
         )
         self.image_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.image_label)
 
         text_layout = QVBoxLayout()
-        text_layout.setSpacing(2)
+        text_layout.setSpacing(4)
 
         self.name_label = QLabel(playlist_data.get('name', 'Unknown'))
         self.name_label.setFont(QFont('Inter', 14, QFont.Bold))
@@ -170,7 +174,7 @@ class PlaylistItemWidget(QWidget):
         owner = playlist_data.get('owner', 'Unknown')
         info_text = f"{track_count} tracks • {owner}"
         self.info_label = QLabel(info_text)
-        self.info_label.setFont(QFont('Inter', 12))
+        self.info_label.setFont(QFont('Inter', 11))
         self.info_label.setStyleSheet("color: #b3b3b3;")
         text_layout.addWidget(self.info_label)
 
@@ -180,6 +184,13 @@ class PlaylistItemWidget(QWidget):
         layout.addStretch()
 
         self.setMouseTracking(True)
+        
+        self.setStyleSheet("""
+            QWidget {
+                background: transparent;
+                border-radius: 8px;
+            }
+        """)
 
     def set_image(self, pixmap):
         """
@@ -197,15 +208,33 @@ class PlaylistItemWidget(QWidget):
             self.image_label.setPixmap(scaled)
 
     def enterEvent(self, event):
-        """Handle mouse enter event for hover effect."""
+        """Handle mouse enter event for hover effect with animation."""
         self._is_hovered = True
-        self.setStyleSheet("QWidget { background-color: #2a2a2a; border-radius: 8px; }")
+        
+        self.setStyleSheet("""
+            QWidget {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 rgba(42, 42, 42, 0.9),
+                    stop:1 rgba(29, 185, 84, 0.1));
+                border-radius: 8px;
+                border-left: 3px solid rgba(29, 185, 84, 0.5);
+            }
+        """)
+        
+        if not self.hover_animation:
+            self.hover_animation = AnimationBuilder.create_fade_in(self, 150)
+        
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         """Handle mouse leave event to remove hover effect."""
         self._is_hovered = False
-        self.setStyleSheet("")
+        self.setStyleSheet("""
+            QWidget {
+                background: transparent;
+                border-radius: 8px;
+            }
+        """)
         super().leaveEvent(event)
 
     def contextMenuEvent(self, event):
@@ -248,18 +277,19 @@ class AlarmApp(QtWidgets.QMainWindow):
         """Initialize the main window and all UI components."""
         super(AlarmApp, self).__init__()
         
-        logger.info('Initializing Alarmify main window')
+        logger.info('Initializing Alarmify main window with Charm design')
 
         self.image_loaders = []
         self.playlist_widgets = {}
         self.current_theme = 'dark'
         self.last_sync_time = None
         
-        # Apply modern styling immediately
-        self._apply_modern_ui()
+        self._load_custom_fonts()
         
         self._build_ui()
         self._apply_theme()
+        
+        self._setup_entrance_animations()
 
         # Check for test mode
         test_mode = os.getenv('ALARMIFY_TEST_MODE', 'False').lower() == 'true'
@@ -308,31 +338,71 @@ class AlarmApp(QtWidgets.QMainWindow):
             self._load_playlists()
             self._refresh_devices()
 
+    def _load_custom_fonts(self):
+        """Load custom fonts (Inter and JetBrains Mono)."""
+        font_db = QFontDatabase()
+        
+        fonts_to_load = [
+            'Inter',
+            'JetBrains Mono'
+        ]
+        
+        for font_name in fonts_to_load:
+            font_id = font_db.addApplicationFont(font_name)
+            if font_id >= 0:
+                logger.info(f'Loaded custom font: {font_name}')
+            else:
+                logger.warning(f'Could not load custom font: {font_name}, using system fallback')
+    
+    def _setup_entrance_animations(self):
+        """Apply entrance animations to UI elements."""
+        widgets_to_animate = []
+        
+        if hasattr(self, 'playlist_list'):
+            widgets_to_animate.append(self.playlist_list)
+        
+        if hasattr(self, 'time_input'):
+            widgets_to_animate.append(self.time_input)
+        
+        apply_entrance_animations(widgets_to_animate, stagger_delay=100)
+
     def _build_ui(self):
-        """Build the complete UI layout programmatically."""
-        self.setWindowTitle('Alarmify')
-        self.setMinimumSize(1000, 700)
+        """Build the complete UI layout programmatically with Charm design."""
+        self.setWindowTitle('Alarmify - Spotify Alarm Clock')
+        self.setMinimumSize(1100, 750)
+        
+        app_icon = QIcon()
+        icon_image = generate_icon_image(256)
+        app_icon.addPixmap(QPixmap.fromImage(icon_image))
+        self.setWindowIcon(app_icon)
 
         self.central_widget = QWidget()
         self.central_widget.setObjectName('centralWidget')
-        # Force VERY dark background - impossible to miss
-        self.central_widget.setStyleSheet("background-color: #000000 !important;")
         self.setCentralWidget(self.central_widget)
-        # Also set main window background
-        self.setStyleSheet("QMainWindow { background-color: #000000 !important; }")
 
         root_layout = QVBoxLayout(self.central_widget)
-        root_layout.setContentsMargins(24, 24, 24, 24)
+        root_layout.setContentsMargins(32, 32, 32, 32)
         root_layout.setSpacing(24)
 
         # Header with logo and status
         header = QHBoxLayout()
-        header.setSpacing(16)
+        header.setSpacing(20)
 
+        header_container = QHBoxLayout()
+        header_container.setSpacing(12)
+        
+        icon_label = QLabel()
+        icon_pixmap = QPixmap.fromImage(generate_icon_image(48))
+        icon_label.setPixmap(icon_pixmap)
+        icon_label.setFixedSize(48, 48)
+        header_container.addWidget(icon_label)
+        
         logo = QLabel('Alarmify')
         logo.setObjectName('appLogo')
         logo.setFont(QFont('Inter', 32, QFont.Bold))
-        header.addWidget(logo)
+        header_container.addWidget(logo)
+        
+        header.addLayout(header_container)
 
         header.addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
 
@@ -369,55 +439,27 @@ class AlarmApp(QtWidgets.QMainWindow):
         playlist_header.setFont(QFont('Inter', 18, QFont.Bold))
         left_panel.addWidget(playlist_header)
 
+        search_container = QHBoxLayout()
+        search_container.setSpacing(8)
+        
+        search_icon = QLabel('🔍')
+        search_icon.setStyleSheet("font-size: 18px; padding: 0 8px;")
+        
         self.playlist_search = QLineEdit()
         self.playlist_search.setPlaceholderText('Search playlists...')
         self.playlist_search.setObjectName('playlistSearch')
-        self.playlist_search.setMinimumHeight(44)
-        self.playlist_search.setStyleSheet("""
-            QLineEdit#playlistSearch {
-                background: rgba(42, 42, 42, 0.7);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
-                padding: 12px 16px;
-                color: #ffffff;
-                font-size: 14px;
-            }
-            QLineEdit#playlistSearch:focus {
-                border: 2px solid #1DB954;
-                background: rgba(51, 51, 51, 0.8);
-            }
-        """)
-        left_panel.addWidget(self.playlist_search)
+        self.playlist_search.setMinimumHeight(48)
+        
+        search_container.addWidget(search_icon)
+        search_container.addWidget(self.playlist_search)
+        
+        left_panel.addLayout(search_container)
 
         self.playlist_list = QListWidget()
         self.playlist_list.setObjectName('playlistList')
-        self.playlist_list.setMinimumWidth(400)
-        self.playlist_list.setSpacing(6)
+        self.playlist_list.setMinimumWidth(450)
+        self.playlist_list.setSpacing(8)
         self.playlist_list.setContextMenuPolicy(Qt.CustomContextMenu)
-        # Apply dark styling directly
-        self.playlist_list.setStyleSheet("""
-            QListWidget {
-                background-color: #1a1a1a !important;
-                border: 2px solid rgba(255, 255, 255, 0.3) !important;
-                border-radius: 12px;
-                padding: 8px;
-                color: #ffffff !important;
-            }
-            QListWidget::item {
-                padding: 8px;
-                border-radius: 8px;
-                margin: 2px;
-                color: #ffffff !important;
-                background-color: transparent;
-            }
-            QListWidget::item:hover {
-                background-color: rgba(42, 42, 42, 0.9) !important;
-            }
-            QListWidget::item:selected {
-                background-color: rgba(29, 185, 84, 0.3) !important;
-                border-left: 4px solid #1DB954 !important;
-            }
-        """)
         left_panel.addWidget(self.playlist_list)
 
         btn_layout = QHBoxLayout()
@@ -465,8 +507,9 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.time_input = QTimeEdit(self)
         self.time_input.setDisplayFormat('HH:mm')
         self.time_input.setObjectName('timeInput')
-        self.time_input.setFont(QFont('JetBrains Mono', 28, QFont.Bold))
-        self.time_input.setMinimumHeight(60)
+        self.time_input.setFont(QFont('JetBrains Mono', 32, QFont.Bold))
+        self.time_input.setMinimumHeight(80)
+        self.time_input.setAlignment(Qt.AlignCenter)
         right_panel.addWidget(self.time_input)
 
         self.alarm_preview_label = QLabel('Next alarm: None')
@@ -486,30 +529,8 @@ class AlarmApp(QtWidgets.QMainWindow):
         self.volume_slider.setMaximum(100)
         self.volume_slider.setValue(80)
         self.volume_slider.setObjectName('volumeSlider')
+        self.volume_slider.setMinimumHeight(24)
         self.volume_slider.valueChanged.connect(self._on_volume_changed)
-        # Apply dark styling directly
-        self.volume_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                background: #3a3a3a !important;
-                height: 6px;
-                border-radius: 3px;
-            }
-            QSlider::handle:horizontal {
-                background: #ffffff !important;
-                width: 18px;
-                height: 18px;
-                margin: -6px 0;
-                border-radius: 9px;
-            }
-            QSlider::handle:horizontal:hover {
-                background: #1DB954 !important;
-                width: 20px;
-                height: 20px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #1DB954 !important;
-            }
-        """)
         volume_row.addWidget(self.volume_slider)
 
         self.volume_value_label = QLabel('80%')
@@ -556,11 +577,9 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         self.tray_icon = QSystemTrayIcon(self)
         
-        icon_path = Path(__file__).resolve().parent / 'Logo First Draft.png'
-        if icon_path.exists():
-            self.tray_icon.setIcon(QIcon(str(icon_path)))
-        else:
-            self.tray_icon.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
+        tray_icon_image = generate_tray_icon(32)
+        tray_icon_pixmap = QPixmap.fromImage(tray_icon_image)
+        self.tray_icon.setIcon(QIcon(tray_icon_pixmap))
 
         tray_menu = QMenu()
         
@@ -630,269 +649,11 @@ class AlarmApp(QtWidgets.QMainWindow):
         self._cleanup_resources()
         QtWidgets.QApplication.quit()
 
-    def _apply_modern_ui(self):
-        """Apply modern UI using QPalette - most reliable method"""
-        palette = QPalette()
-        # Dark background
-        palette.setColor(QPalette.Window, QColor(10, 10, 10))  # #0a0a0a
-        palette.setColor(QPalette.WindowText, QColor(255, 255, 255))
-        # Input backgrounds
-        palette.setColor(QPalette.Base, QColor(26, 26, 26))  # #1a1a1a
-        palette.setColor(QPalette.AlternateBase, QColor(42, 42, 42))
-        # Text
-        palette.setColor(QPalette.Text, QColor(255, 255, 255))
-        palette.setColor(QPalette.BrightText, QColor(29, 185, 84))
-        # Buttons
-        palette.setColor(QPalette.Button, QColor(29, 185, 84))
-        palette.setColor(QPalette.ButtonText, QColor(0, 0, 0))
-        # Highlights
-        palette.setColor(QPalette.Highlight, QColor(29, 185, 84))
-        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
-        self.setPalette(palette)
-        logger.info('Applied dark palette')
-    
     def _apply_theme(self):
-        """Apply the current theme to the application."""
-        if self.current_theme == 'dark':
-            # Use inline stylesheet - more reliable than external file
-            dark_style = """
-            QMainWindow { background-color: #0a0a0a; }
-            QWidget { background-color: #0a0a0a; color: #ffffff; }
-            QPushButton {
-                background-color: #1DB954;
-                color: #000000;
-                border: none;
-                border-radius: 20px;
-                padding: 12px 32px;
-                font-weight: 700;
-                font-size: 14px;
-                min-height: 40px;
-            }
-            QPushButton:hover { background-color: #1ed760; }
-            QPushButton:pressed { background-color: #1aa34a; }
-            QLineEdit, QTimeEdit {
-                background-color: #1a1a1a;
-                color: #ffffff;
-                border: 2px solid rgba(255, 255, 255, 0.2);
-                border-radius: 8px;
-                padding: 12px;
-            }
-            QLineEdit:focus, QTimeEdit:focus {
-                border: 2px solid #1DB954;
-                background-color: #1f1f1f;
-            }
-            QListWidget {
-                background-color: #1a1a1a;
-                border: 2px solid rgba(255, 255, 255, 0.2);
-                border-radius: 12px;
-                padding: 8px;
-                color: #ffffff;
-            }
-            QListWidget::item {
-                padding: 8px;
-                border-radius: 8px;
-                margin: 2px;
-                color: #ffffff;
-            }
-            QListWidget::item:selected {
-                background-color: rgba(29, 185, 84, 0.3);
-                border-left: 4px solid #1DB954;
-            }
-            QListWidget::item:hover {
-                background-color: rgba(42, 42, 42, 0.9);
-            }
-            QComboBox {
-                background-color: #1a1a1a;
-                color: #ffffff;
-                border: 2px solid rgba(255, 255, 255, 0.2);
-                border-radius: 8px;
-                padding: 12px;
-            }
-            QComboBox:hover { border: 2px solid rgba(255, 255, 255, 0.3); }
-            QComboBox:focus { border: 2px solid #1DB954; }
-            QSlider::groove:horizontal {
-                background: #3a3a3a;
-                height: 6px;
-                border-radius: 3px;
-            }
-            QSlider::handle:horizontal {
-                background: #ffffff;
-                width: 18px;
-                height: 18px;
-                margin: -6px 0;
-                border-radius: 9px;
-            }
-            QSlider::handle:horizontal:hover { background: #1DB954; }
-            QSlider::sub-page:horizontal { background: #1DB954; }
-            QLabel { color: #b3b3b3; }
-            QLabel[objectName="sectionHeader"] {
-                color: #ffffff;
-                font-size: 18px;
-                font-weight: 700;
-            }
-            """
-            self.setStyleSheet(dark_style)
-            if hasattr(self, 'central_widget'):
-                self.central_widget.setStyleSheet(dark_style)
-            logger.info('Applied dark theme stylesheet')
-        else:
-            palette = QPalette()
-            palette.setColor(QPalette.Window, QColor(240, 240, 240))
-            palette.setColor(QPalette.WindowText, QColor(0, 0, 0))
-            palette.setColor(QPalette.Base, QColor(255, 255, 255))
-            palette.setColor(QPalette.AlternateBase, QColor(245, 245, 245))
-            palette.setColor(QPalette.Text, QColor(0, 0, 0))
-            palette.setColor(QPalette.Button, QColor(29, 185, 84))
-            palette.setColor(QPalette.ButtonText, QColor(0, 0, 0))
-            self.setPalette(palette)
-            
-            light_style = """
-            QMainWindow { background: #f5f5f5; }
-            QWidget { background: #f5f5f5; color: #1a1a1a; }
-            QLabel { color: #1a1a1a; }
-            QLabel[objectName="sectionHeader"] { color: #000000; font-weight: 700; }
-            #appLogo { color: #1DB954; }
-            #authStatus { color: #555555; }
-            #deviceStatus { color: #666666; }
-            QListWidget#playlistList { 
-                background: #ffffff; 
-                border: 1px solid #d0d0d0;
-                color: #1a1a1a;
-            }
-            QListWidget::item {
-                color: #1a1a1a;
-            }
-            QListWidget::item:selected {
-                background: #1DB954;
-                color: #000000;
-            }
-            QListWidget::item:hover {
-                background: #e8e8e8;
-            }
-            QPushButton {
-                background: #1DB954;
-                color: #000000;
-                border: none;
-                border-radius: 500px;
-                padding: 12px 32px;
-                font-weight: 700;
-                font-size: 14px;
-            }
-            QPushButton:hover {
-                background: #1ed760;
-            }
-            QPushButton:disabled {
-                background: #d0d0d0;
-                color: #888888;
-            }
-            QTimeEdit#timeInput {
-                background: #ffffff;
-                color: #1a1a1a;
-                border: 2px solid #d0d0d0;
-                border-radius: 6px;
-                padding: 12px;
-                font-weight: 600;
-            }
-            QTimeEdit#timeInput:focus {
-                border: 2px solid #1DB954;
-            }
-            QLineEdit {
-                background: #ffffff;
-                color: #1a1a1a;
-                border: 2px solid #d0d0d0;
-                border-radius: 6px;
-                padding: 10px 14px;
-            }
-            QLineEdit:focus {
-                border: 2px solid #1DB954;
-            }
-            QLineEdit::placeholder {
-                color: #999999;
-            }
-            QComboBox {
-                background: #ffffff;
-                color: #1a1a1a;
-                border: 2px solid #d0d0d0;
-                border-radius: 6px;
-                padding: 10px 14px;
-            }
-            QComboBox:hover {
-                border: 2px solid #1DB954;
-            }
-            QComboBox:focus {
-                border: 2px solid #1DB954;
-            }
-            QComboBox QAbstractItemView {
-                background: #ffffff;
-                color: #1a1a1a;
-                border: 1px solid #d0d0d0;
-                selection-background-color: #1DB954;
-                selection-color: #000000;
-            }
-            QStatusBar {
-                background: #e8e8e8;
-                color: #1a1a1a;
-                border-top: 1px solid #d0d0d0;
-            }
-            QStatusBar QLabel {
-                color: #555555;
-            }
-            QCheckBox {
-                color: #1a1a1a;
-                spacing: 10px;
-            }
-            QCheckBox::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #888888;
-                border-radius: 9px;
-                background: #ffffff;
-            }
-            QCheckBox::indicator:checked {
-                background: #1DB954;
-                border: 2px solid #1DB954;
-            }
-            QCheckBox::indicator:hover {
-                border: 2px solid #1DB954;
-            }
-            QRadioButton {
-                color: #1a1a1a;
-                spacing: 10px;
-            }
-            QRadioButton::indicator {
-                width: 18px;
-                height: 18px;
-                border: 2px solid #888888;
-                border-radius: 9px;
-                background: #ffffff;
-            }
-            QRadioButton::indicator:checked {
-                background: #1DB954;
-                border: 2px solid #1DB954;
-            }
-            QRadioButton::indicator:hover {
-                border: 2px solid #1DB954;
-            }
-            QSlider::groove:horizontal {
-                background: #d0d0d0;
-                height: 4px;
-                border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                background: #1a1a1a;
-                width: 14px;
-                height: 14px;
-                margin: -5px 0;
-                border-radius: 7px;
-            }
-            QSlider::handle:horizontal:hover {
-                background: #1DB954;
-            }
-            QSlider::sub-page:horizontal {
-                background: #1DB954;
-            }
-            """
-            self.setStyleSheet(light_style)
+        """Apply the current theme using the Charm design system."""
+        stylesheet = get_stylesheet(self.current_theme)
+        self.setStyleSheet(stylesheet)
+        logger.info(f'Applied {self.current_theme} theme with Charm design system')
 
     def _toggle_theme(self):
         """Toggle between dark and light themes."""

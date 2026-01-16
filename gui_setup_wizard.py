@@ -24,6 +24,8 @@ import os
 import webbrowser
 from dotenv import load_dotenv
 from logging_config import get_logger
+from charm_stylesheet import get_stylesheet
+from icon_generator import generate_icon_image
 
 logger = get_logger(__name__)
 
@@ -381,9 +383,14 @@ class SetupWizard(QWizard):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Alarmify Setup Wizard")
-        self.setMinimumSize(600, 500)
+        self.setMinimumSize(700, 600)
         
-        # Apply Spotify theme
+        app_icon = QIcon()
+        icon_image = generate_icon_image(256)
+        app_icon.addPixmap(QPixmap.fromImage(icon_image))
+        self.setWindowIcon(app_icon)
+        
+        # Apply Charm theme
         self._apply_theme()
         
         # Add pages
@@ -402,67 +409,20 @@ class SetupWizard(QWizard):
         logger.info('Setup wizard initialized')
     
     def _apply_theme(self):
-        """Apply Spotify-inspired theme to wizard."""
-        style = """
+        """Apply Charm-inspired theme to wizard."""
+        wizard_style = get_stylesheet('dark')
+        
+        wizard_overrides = """
         QWizard {
-            background: #121212;
-            color: #ffffff;
+            background: #0a0a0a;
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
         }
         QWizardPage {
-            background: #121212;
-            color: #ffffff;
-        }
-        QLabel {
-            color: #b3b3b3;
-        }
-        QPushButton {
-            background: #1DB954;
-            color: #000000;
-            border: none;
-            border-radius: 6px;
-            padding: 8px 16px;
-            font-weight: 600;
-        }
-        QPushButton:hover {
-            background: #1ed760;
-        }
-        QPushButton:disabled {
-            background: #2a2a2a;
-            color: #777777;
-        }
-        QLineEdit {
-            background: #181818;
-            color: #ffffff;
-            border: 1px solid #2a2a2a;
-            border-radius: 6px;
-            padding: 8px;
-        }
-        QLineEdit:focus {
-            border: 2px solid #1DB954;
-        }
-        QCheckBox {
-            color: #ffffff;
-        }
-        QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
-            border: 2px solid #727272;
-            border-radius: 9px;
-            background: #181818;
-        }
-        QCheckBox::indicator:checked {
-            background: #1DB954;
-            border: 2px solid #1DB954;
-        }
-        QCheckBox::indicator:hover {
-            border: 2px solid #b3b3b3;
-        }
-        QCheckBox::indicator:checked:hover {
-            border: 2px solid #1ed760;
-            background: #1ed760;
+            background: #0a0a0a;
         }
         """
-        self.setStyleSheet(style)
+        
+        self.setStyleSheet(wizard_style + wizard_overrides)
     
     def get_credentials(self):
         """Get credentials from wizard."""

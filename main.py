@@ -77,6 +77,13 @@ def main():
         app = QtWidgets.QApplication(sys.argv)
         app.setQuitOnLastWindowClosed(False)
         
+        app.setApplicationName('Alarmify')
+        app.setApplicationDisplayName('Alarmify - Spotify Alarm Clock')
+        app.setOrganizationName('Alarmify')
+        
+        from PyQt5.QtGui import QFont
+        app.setFont(QFont('Inter', 10))
+        
         # Check if first run and show wizard
         if is_first_run():
             logger.info('First run detected - showing setup wizard')
