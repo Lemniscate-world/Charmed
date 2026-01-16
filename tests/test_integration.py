@@ -761,6 +761,12 @@ class TestPhase2SnoozeWorkflows:
 class TestComplexPhase2Scenarios:
     """Complex integration scenarios combining Phase 2 features."""
     
+    def setup_method(self):
+        """Clear snooze state before each test."""
+        snooze_state_file = Path.home() / '.alarmify' / 'snooze_state.json'
+        if snooze_state_file.exists():
+            snooze_state_file.unlink()
+    
     @patch('spotify_api.spotify_api.spotipy.Spotify')
     @patch('spotify_api.spotify_api.SpotifyOAuth')
     def test_complete_phase2_workflow(self, mock_oauth, mock_spotify_class, tmp_path):
@@ -955,6 +961,596 @@ class TestComplexPhase2Scenarios:
             evening_alarm = [a for a in alarms if a['time'] == '20:00'][0]
             assert evening_alarm['fade_in_enabled'] is False
             assert evening_alarm['days'] is None
+            
+            alarm.shutdown()
+    
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    def test_alarm_creation_from_template_workflow(self, mock_oauth, mock_spotify_class, tmp_path):
+        """Test creating alarm from template preserves all settings."""
+        mock_sp = MagicMock()
+        mock_spotify_class.return_value = mock_sp
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test_token'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test_token'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        with patch.dict('os.environ', {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888'
+        }):
+            api = SpotifyAPI()
+            api.sp = mock_sp
+            
+            # Create template with all Phase 2 settings
+            templates_file = tmp_path / 'templates.json'
+            manager = TemplateManager(templates_file)
+            
+            template = AlarmTemplate(
+                name='Morning Workout',
+                time='06:30',
+                playlist_name='Workout Mix',
+                playlist_uri='spotify:playlist:workout',
+                volume=85,
+                fade_in_enabled=True,
+                fade_in_duration=20,
+                days=['Monday', 'Wednesday', 'Friday']
+            )
+            
+            manager.add_template(template)
+            
+            # Load template and create alarm
+            loaded = manager.get_template('Morning Workout')
+            alarm = Alarm()
+            
+            alarm.set_alarm(
+                loaded.time,
+                loaded.playlist_name,
+                loaded.playlist_uri,
+                api,
+                loaded.volume,
+                loaded.fade_in_enabled,
+                loaded.fade_in_duration,
+                loaded.days
+            )
+            
+            # Verify all settings are preserved
+            alarms = alarm.get_alarms()
+            assert len(alarms) == 1
+            
+            created = alarms[0]
+            assert created['time'] == '06:30'
+            assert created['playlist'] == 'Workout Mix'
+            assert created['playlist_uri'] == 'spotify:playlist:workout'
+            assert created['volume'] == 85
+            assert created['fade_in_enabled'] is True
+            assert created['fade_in_duration'] == 20
+            assert created['days'] == ['Monday', 'Wednesday', 'Friday']
+            
+            alarm.shutdown()
+    
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    def test_next_trigger_calculation_with_day_restrictions(self, mock_oauth, mock_spotify_class):
+        """Test next trigger time calculation respects day restrictions."""
+        mock_sp = MagicMock()
+        mock_spotify_class.return_value = mock_sp
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test_token'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test_token'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        with patch.dict('os.environ', {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888'
+        }):
+            api = SpotifyAPI()
+            api.sp = mock_sp
+            
+            alarm = Alarm()
+            
+            # Create alarm with specific day restrictions
+            alarm.set_alarm(
+                '08:00',
+                'Tuesday Thursday Alarm',
+                'spotify:playlist:tt',
+                api,
+                volume=75,
+                fade_in_enabled=True,
+                fade_in_duration=15,
+                days=['Tuesday', 'Thursday']
+            )
+            
+            alarms = alarm.get_alarms()
+            assert len(alarms) == 1
+            
+            # Get next trigger time
+            next_trigger = alarm.get_next_trigger_time(alarms[0])
+            assert next_trigger is not None
+            
+            # Verify next trigger is on Tuesday or Thursday
+            day_name = next_trigger.strftime('%A')
+            assert day_name in ['Tuesday', 'Thursday']
+            
+            # Get all upcoming triggers in next 7 days
+            upcoming = alarm.get_upcoming_alarms(days=7)
+            
+            # All should be on Tuesday or Thursday
+            for item in upcoming:
+                day_name = item['datetime'].strftime('%A')
+                assert day_name in ['Tuesday', 'Thursday']
+            
+            # Should have at least 2 triggers in next 7 days (at least 1 Tue + 1 Thu)
+            assert len(upcoming) >= 2
+            
+            alarm.shutdown()
+    
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    def test_snooze_preserves_fade_in_settings(self, mock_oauth, mock_spotify_class):
+        """Test that snoozing an alarm preserves all fade-in settings."""
+        mock_sp = MagicMock()
+        mock_spotify_class.return_value = mock_sp
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test_token'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test_token'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        with patch.dict('os.environ', {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888'
+        }):
+            api = SpotifyAPI()
+            api.sp = mock_sp
+            
+            alarm = Alarm()
+            
+            # Create alarm data with fade-in settings
+            alarm_data = {
+                'playlist_uri': 'spotify:playlist:fadein',
+                'playlist_name': 'Fade In Test',
+                'volume': 80,
+                'fade_in_enabled': True,
+                'fade_in_duration': 25,
+                'spotify_api': api
+            }
+            
+            # Snooze the alarm
+            alarm.snooze_alarm(alarm_data, snooze_minutes=10)
+            
+            # Check snoozed alarms
+            snoozed = alarm.snoozed_alarms
+            assert len(snoozed) == 1
+            
+            snoozed_alarm = snoozed[0]
+            
+            # Verify all settings are preserved
+            assert snoozed_alarm['original_playlist'] == 'Fade In Test'
+            assert snoozed_alarm['playlist_uri'] == 'spotify:playlist:fadein'
+            assert snoozed_alarm['volume'] == 80
+            assert snoozed_alarm['fade_in_enabled'] is True
+            assert snoozed_alarm['fade_in_duration'] == 25
+            assert snoozed_alarm['snooze_duration'] == 10
+            
+            # Verify snooze time is approximately 10 minutes in future
+            now = datetime.now()
+            snooze_time = snoozed_alarm['snooze_time']
+            expected_time = now + timedelta(minutes=10)
+            time_diff = abs((snooze_time - expected_time).total_seconds())
+            assert time_diff < 5
+            
+            alarm.shutdown()
+    
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    def test_device_wake_integration_with_alarm(self, mock_oauth, mock_spotify_class):
+        """Test device wake manager integration with alarm scheduling."""
+        mock_sp = MagicMock()
+        mock_spotify_class.return_value = mock_sp
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test_token'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test_token'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        with patch.dict('os.environ', {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888'
+        }):
+            api = SpotifyAPI()
+            api.sp = mock_sp
+            
+            alarm = Alarm()
+            
+            # Set alarm - should initialize device wake manager
+            alarm.set_alarm(
+                '07:00',
+                'Morning',
+                'spotify:playlist:morning',
+                api,
+                volume=75,
+                fade_in_enabled=True,
+                fade_in_duration=15
+            )
+            
+            # Verify device wake manager was initialized
+            assert alarm.device_wake_manager is not None
+            
+            # Get alarm info
+            alarms = alarm.get_alarms()
+            assert len(alarms) == 1
+            alarm_id = alarm.alarms[0]['id']
+            
+            # Verify device wake manager is functioning
+            assert alarm_id in alarm.device_wake_manager._wake_timers
+            
+            alarm.shutdown()
+    
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    def test_combined_fade_in_day_specific_snooze_workflow(self, mock_oauth, mock_spotify_class):
+        """Test combining fade-in, day-specific scheduling, and snooze."""
+        mock_sp = MagicMock()
+        mock_spotify_class.return_value = mock_sp
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test_token'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test_token'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        with patch.dict('os.environ', {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888'
+        }):
+            api = SpotifyAPI()
+            api.sp = mock_sp
+            
+            alarm = Alarm()
+            
+            # Create alarm with all Phase 2 features
+            alarm.set_alarm(
+                '06:45',
+                'Weekday Workout',
+                'spotify:playlist:workout',
+                api,
+                volume=85,
+                fade_in_enabled=True,
+                fade_in_duration=20,
+                days='weekdays'
+            )
+            
+            alarms = alarm.get_alarms()
+            assert len(alarms) == 1
+            
+            created_alarm = alarms[0]
+            assert created_alarm['fade_in_enabled'] is True
+            assert created_alarm['fade_in_duration'] == 20
+            assert created_alarm['days'] == ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+            
+            # Simulate alarm trigger and create alarm_data
+            alarm_data = {
+                'playlist_uri': created_alarm['playlist_uri'],
+                'playlist_name': created_alarm['playlist'],
+                'volume': created_alarm['volume'],
+                'fade_in_enabled': created_alarm['fade_in_enabled'],
+                'fade_in_duration': created_alarm['fade_in_duration'],
+                'spotify_api': api
+            }
+            
+            # Snooze the alarm
+            alarm.snooze_alarm(alarm_data, snooze_minutes=15)
+            
+            # Verify snooze preserves fade-in settings
+            snoozed = alarm.get_snoozed_alarms()
+            assert len(snoozed) == 1
+            
+            # Verify next trigger calculation for original alarm
+            next_trigger = alarm.get_next_trigger_time(created_alarm)
+            assert next_trigger is not None
+            
+            # Verify it's on a weekday
+            day_name = next_trigger.strftime('%A')
+            assert day_name in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+            
+            # Verify upcoming alarms include both regular and snoozed
+            upcoming = alarm.get_upcoming_alarms(days=7)
+            
+            # All regular triggers should be on weekdays
+            for item in upcoming:
+                day_name = item['datetime'].strftime('%A')
+                assert day_name in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+            
+            alarm.shutdown()
+    
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    def test_template_with_all_phase2_features_to_alarm(self, mock_oauth, mock_spotify_class, tmp_path):
+        """Test template with all Phase 2 features creates correct alarm."""
+        mock_sp = MagicMock()
+        mock_spotify_class.return_value = mock_sp
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test_token'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test_token'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        with patch.dict('os.environ', {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888'
+        }):
+            api = SpotifyAPI()
+            api.sp = mock_sp
+            
+            # Create comprehensive template
+            templates_file = tmp_path / 'templates.json'
+            manager = TemplateManager(templates_file)
+            
+            comprehensive_template = AlarmTemplate(
+                name='Full Featured',
+                time='07:15',
+                playlist_name='Complete Playlist',
+                playlist_uri='spotify:playlist:complete',
+                volume=70,
+                fade_in_enabled=True,
+                fade_in_duration=18,
+                days=['Monday', 'Wednesday', 'Friday']
+            )
+            
+            manager.add_template(comprehensive_template)
+            
+            # Create alarm from template
+            alarm = Alarm()
+            loaded = manager.get_template('Full Featured')
+            
+            alarm.set_alarm(
+                loaded.time,
+                loaded.playlist_name,
+                loaded.playlist_uri,
+                api,
+                loaded.volume,
+                loaded.fade_in_enabled,
+                loaded.fade_in_duration,
+                loaded.days
+            )
+            
+            # Verify alarm has all features
+            alarms = alarm.get_alarms()
+            assert len(alarms) == 1
+            
+            created = alarms[0]
+            assert created['time'] == '07:15'
+            assert created['playlist'] == 'Complete Playlist'
+            assert created['volume'] == 70
+            assert created['fade_in_enabled'] is True
+            assert created['fade_in_duration'] == 18
+            assert set(created['days']) == {'Monday', 'Wednesday', 'Friday'}
+            
+            # Test snooze preserves all settings
+            alarm_data = {
+                'playlist_uri': created['playlist_uri'],
+                'playlist_name': created['playlist'],
+                'volume': created['volume'],
+                'fade_in_enabled': created['fade_in_enabled'],
+                'fade_in_duration': created['fade_in_duration'],
+                'spotify_api': api
+            }
+            
+            alarm.snooze_alarm(alarm_data, snooze_minutes=12)
+            
+            snoozed = alarm.snoozed_alarms
+            assert len(snoozed) == 1
+            assert snoozed[0]['fade_in_enabled'] is True
+            assert snoozed[0]['fade_in_duration'] == 18
+            assert snoozed[0]['volume'] == 70
+            
+            # Test next trigger respects day restrictions
+            next_trigger = alarm.get_next_trigger_time(created)
+            assert next_trigger is not None
+            day_name = next_trigger.strftime('%A')
+            assert day_name in ['Monday', 'Wednesday', 'Friday']
+            
+            alarm.shutdown()
+    
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    def test_multiple_snoozes_preserve_different_fade_settings(self, mock_oauth, mock_spotify_class):
+        """Test multiple snoozed alarms maintain independent fade-in settings."""
+        mock_sp = MagicMock()
+        mock_spotify_class.return_value = mock_sp
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test_token'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test_token'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        with patch.dict('os.environ', {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888'
+        }):
+            api = SpotifyAPI()
+            api.sp = mock_sp
+            
+            alarm = Alarm()
+            
+            # Create first alarm data with fade-in
+            alarm_data_1 = {
+                'playlist_uri': 'spotify:playlist:morning',
+                'playlist_name': 'Morning Mix',
+                'volume': 75,
+                'fade_in_enabled': True,
+                'fade_in_duration': 15,
+                'spotify_api': api
+            }
+            
+            # Create second alarm data without fade-in
+            alarm_data_2 = {
+                'playlist_uri': 'spotify:playlist:energetic',
+                'playlist_name': 'Energetic Mix',
+                'volume': 90,
+                'fade_in_enabled': False,
+                'fade_in_duration': 10,
+                'spotify_api': api
+            }
+            
+            # Create third alarm data with different fade-in duration
+            alarm_data_3 = {
+                'playlist_uri': 'spotify:playlist:gentle',
+                'playlist_name': 'Gentle Wake',
+                'volume': 60,
+                'fade_in_enabled': True,
+                'fade_in_duration': 30,
+                'spotify_api': api
+            }
+            
+            # Snooze all three
+            alarm.snooze_alarm(alarm_data_1, snooze_minutes=5)
+            alarm.snooze_alarm(alarm_data_2, snooze_minutes=10)
+            alarm.snooze_alarm(alarm_data_3, snooze_minutes=15)
+            
+            # Verify all three are snoozed with correct settings
+            snoozed = alarm.snoozed_alarms
+            assert len(snoozed) == 3
+            
+            # Find each snoozed alarm and verify settings
+            morning_snooze = [s for s in snoozed if s['original_playlist'] == 'Morning Mix'][0]
+            assert morning_snooze['fade_in_enabled'] is True
+            assert morning_snooze['fade_in_duration'] == 15
+            assert morning_snooze['volume'] == 75
+            assert morning_snooze['snooze_duration'] == 5
+            
+            energetic_snooze = [s for s in snoozed if s['original_playlist'] == 'Energetic Mix'][0]
+            assert energetic_snooze['fade_in_enabled'] is False
+            assert energetic_snooze['fade_in_duration'] == 10
+            assert energetic_snooze['volume'] == 90
+            assert energetic_snooze['snooze_duration'] == 10
+            
+            gentle_snooze = [s for s in snoozed if s['original_playlist'] == 'Gentle Wake'][0]
+            assert gentle_snooze['fade_in_enabled'] is True
+            assert gentle_snooze['fade_in_duration'] == 30
+            assert gentle_snooze['volume'] == 60
+            assert gentle_snooze['snooze_duration'] == 15
+            
+            alarm.shutdown()
+    
+    @patch('spotify_api.spotify_api.spotipy.Spotify')
+    @patch('spotify_api.spotify_api.SpotifyOAuth')
+    def test_upcoming_alarms_with_mixed_day_schedules(self, mock_oauth, mock_spotify_class):
+        """Test upcoming alarms calculation with various day schedules."""
+        mock_sp = MagicMock()
+        mock_spotify_class.return_value = mock_sp
+        
+        mock_cache_handler = Mock()
+        mock_cache_handler.get_cached_token.return_value = {'access_token': 'test_token'}
+        
+        mock_oauth_instance = Mock()
+        mock_oauth_instance.cache_handler = mock_cache_handler
+        mock_oauth_instance.validate_token.return_value = {'access_token': 'test_token'}
+        mock_oauth.return_value = mock_oauth_instance
+        
+        with patch.dict('os.environ', {
+            'SPOTIPY_CLIENT_ID': 'test_id',
+            'SPOTIPY_CLIENT_SECRET': 'test_secret',
+            'SPOTIPY_REDIRECT_URI': 'http://localhost:8888'
+        }):
+            api = SpotifyAPI()
+            api.sp = mock_sp
+            
+            alarm = Alarm()
+            
+            # Weekday alarm
+            alarm.set_alarm(
+                '07:00', 'Weekday', 'spotify:playlist:wd',
+                api, volume=75, fade_in_enabled=True, fade_in_duration=15,
+                days='weekdays'
+            )
+            
+            # Weekend alarm
+            alarm.set_alarm(
+                '09:00', 'Weekend', 'spotify:playlist:we',
+                api, volume=70, fade_in_enabled=True, fade_in_duration=20,
+                days='weekends'
+            )
+            
+            # Monday-Wednesday-Friday alarm
+            alarm.set_alarm(
+                '06:30', 'MWF', 'spotify:playlist:mwf',
+                api, volume=80, fade_in_enabled=True, fade_in_duration=12,
+                days=['Monday', 'Wednesday', 'Friday']
+            )
+            
+            # Every day alarm
+            alarm.set_alarm(
+                '22:00', 'Evening', 'spotify:playlist:eve',
+                api, volume=50, fade_in_enabled=False, fade_in_duration=10,
+                days=None
+            )
+            
+            # Get upcoming alarms for next 7 days
+            upcoming = alarm.get_upcoming_alarms(days=7)
+            
+            # Should have many triggers
+            assert len(upcoming) > 10  # At minimum: 5 weekday + 2 weekend + 3 MWF + 7 evening = 17
+            
+            # Verify triggers are sorted by time
+            for i in range(len(upcoming) - 1):
+                assert upcoming[i]['datetime'] <= upcoming[i + 1]['datetime']
+            
+            # Count triggers by playlist
+            weekday_count = sum(1 for u in upcoming if u['alarm_info']['playlist'] == 'Weekday')
+            weekend_count = sum(1 for u in upcoming if u['alarm_info']['playlist'] == 'Weekend')
+            mwf_count = sum(1 for u in upcoming if u['alarm_info']['playlist'] == 'MWF')
+            evening_count = sum(1 for u in upcoming if u['alarm_info']['playlist'] == 'Evening')
+            
+            # Verify counts are reasonable (at least 1 of each in 7 days)
+            assert weekday_count >= 5  # 5 weekdays
+            assert weekend_count >= 2  # 2 weekend days
+            assert mwf_count >= 3  # 3 MWF days
+            assert evening_count >= 7  # 7 evening alarms
+            
+            # Verify day constraints are respected
+            for item in upcoming:
+                if item['alarm_info']['playlist'] == 'Weekday':
+                    day = item['datetime'].strftime('%A')
+                    assert day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+                
+                if item['alarm_info']['playlist'] == 'Weekend':
+                    day = item['datetime'].strftime('%A')
+                    assert day in ['Saturday', 'Sunday']
+                
+                if item['alarm_info']['playlist'] == 'MWF':
+                    day = item['datetime'].strftime('%A')
+                    assert day in ['Monday', 'Wednesday', 'Friday']
             
             alarm.shutdown()
 
