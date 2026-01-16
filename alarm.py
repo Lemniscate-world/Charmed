@@ -1760,7 +1760,8 @@ class Alarm:
             self.alarms.clear()
             
             for snooze in self.snoozed_alarms:
-                schedule.cancel_job(snooze['job'])
+                if 'job' in snooze:
+                    schedule.cancel_job(snooze['job'])
             self.snoozed_alarms.clear()
             
             logger.info(

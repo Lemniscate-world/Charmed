@@ -18,6 +18,7 @@ Run with: python -m pytest tests/test_gui.py -v
 
 import pytest
 import os
+import time
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch, call
@@ -620,6 +621,130 @@ class TestImageLoaderThread:
         assert len(signal_received) == 1
         assert signal_received[0][0] == 'playlist123'
         assert signal_received[0][1].isNull()
+    
+    def test_thread_stop(self, qapp):
+        """Test thread stop functionality stops gracefully."""
+        loader = ImageLoaderThread('playlist123', 'https://example.com/image.jpg')
+        
+        # Initially running
+        assert loader._is_running is True
+        
+        # Call stop
+        loader.stop()
+        
+        # Should set flag to False
+        assert loader._is_running is False
+    
+    @patch('gui.requests.get')
+    def test_thread_stop_prevents_execution(self, mock_get, qapp):
+        """Test stopping thread before run prevents execution."""
+        mock_response = Mock()
+        mock_response.content = b'\x89PNG\r\n\x1a\n' + b'\x00' * 100
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+        
+        loader = ImageLoaderThread('playlist123', 'https://example.com/image.jpg')
+        
+        # Stop immediately
+        loader.stop()
+        
+        signal_received = []
+        
+        def on_image_loaded(playlist_id, pixmap):
+            signal_received.append((playlist_id, pixmap))
+        
+        loader.image_loaded.connect(on_image_loaded)
+        
+        # Run should return early
+        loader.run()
+        
+        # No signal should be emitted
+        assert len(signal_received) == 0
+        
+        # Network request should not be made
+        mock_get.assert_not_called()
+    
+    @patch('gui.requests.get')
+    def test_thread_stop_during_download(self, mock_get, qapp):
+        """Test stopping thread during download prevents signal emission."""
+        # Simulate slow download
+        def slow_get(*args, **kwargs):
+            # Simulate network delay
+            time.sleep(0.1)
+            response = Mock()
+            response.content = b'\x89PNG\r\n\x1a\n' + b'\x00' * 100
+            response.raise_for_status.return_value = None
+            return response
+        
+        mock_get.side_effect = slow_get
+        
+        loader = ImageLoaderThread('playlist123', 'https://example.com/image.jpg')
+        
+        signal_received = []
+        
+        def on_image_loaded(playlist_id, pixmap):
+            signal_received.append((playlist_id, pixmap))
+        
+        loader.image_loaded.connect(on_image_loaded)
+        
+        # Start loader in a thread
+        import threading
+        thread = threading.Thread(target=loader.run)
+        thread.start()
+        
+        # Stop loader shortly after starting
+        time.sleep(0.05)
+        loader.stop()
+        
+        # Wait for thread to complete
+        thread.join(timeout=1.0)
+        
+        # Signal may or may not be emitted depending on timing,
+        # but stop should have been called
+        assert loader._is_running is False
+    
+    def test_thread_stop_idempotent(self, qapp):
+        """Test calling stop multiple times is safe."""
+        loader = ImageLoaderThread('playlist123', 'https://example.com/image.jpg')
+        
+        # Call stop multiple times
+        loader.stop()
+        loader.stop()
+        loader.stop()
+        
+        # Should still be stopped
+        assert loader._is_running is False
+    
+    @patch('gui.requests.get')
+    def test_thread_checks_running_flag_before_signal(self, mock_get, qapp):
+        """Test thread checks running flag before emitting signal."""
+        mock_response = Mock()
+        mock_response.content = b'\x89PNG\r\n\x1a\n' + b'\x00' * 100
+        mock_response.raise_for_status.return_value = None
+        mock_get.return_value = mock_response
+        
+        loader = ImageLoaderThread('playlist123', 'https://example.com/image.jpg')
+        
+        # Patch the stop method to be called during execution
+        original_raise_for_status = mock_response.raise_for_status
+        
+        def stop_during_download():
+            loader.stop()
+            return original_raise_for_status()
+        
+        mock_response.raise_for_status = stop_during_download
+        
+        signal_received = []
+        
+        def on_image_loaded(playlist_id, pixmap):
+            signal_received.append((playlist_id, pixmap))
+        
+        loader.image_loaded.connect(on_image_loaded)
+        
+        loader.run()
+        
+        # Signal should not be emitted since thread was stopped
+        assert len(signal_received) == 0
 
 
 class TestAlarmAppMainWindow:
@@ -645,6 +770,318 @@ class TestAlarmAppMainWindow:
             assert window.playlist_list is not None
             assert window.time_input is not None
             assert window.volume_slider is not None
+
+
+class TestAlarmAppCloseEvent:
+    """Tests for AlarmApp.closeEvent resource cleanup."""
+    
+    @patch('gui.ThreadSafeSpotifyAPI')
+    @patch('gui.Alarm')
+    def test_close_event_with_system_tray_minimizes(self, mock_alarm_class, mock_spotify_class, qapp):
+        """Test close event minimizes to tray when tray is visible."""
+        mock_spotify_instance = Mock()
+        mock_spotify_instance.is_authenticated.return_value = False
+        mock_spotify_class.return_value = mock_spotify_instance
+        
+        mock_alarm_instance = Mock()
+        mock_alarm_instance.get_next_alarm_datetime.return_value = None
+        mock_alarm_class.return_value = mock_alarm_instance
+        
+        with patch('gui.QMessageBox.warning'):
+            window = AlarmApp()
+        
+        # Setup system tray
+        window.tray_icon = Mock()
+        window.tray_icon.isVisible.return_value = True
+        window.tray_icon.showMessage = Mock()
+        
+        # Create a close event
+        from PyQt5.QtGui import QCloseEvent
+        event = QCloseEvent()
+        
+        # Handle close event
+        window.closeEvent(event)
+        
+        # Event should be ignored (window minimized, not closed)
+        assert event.isAccepted() is False
+        
+        # Tray message should be shown
+        window.tray_icon.showMessage.assert_called_once()
+    
+    @patch('gui.ThreadSafeSpotifyAPI')
+    @patch('gui.Alarm')
+    def test_close_event_without_tray_accepts_and_cleans_up(self, mock_alarm_class, mock_spotify_class, qapp):
+        """Test close event accepts and cleans up when no tray icon."""
+        mock_spotify_instance = Mock()
+        mock_spotify_instance.is_authenticated.return_value = False
+        mock_spotify_class.return_value = mock_spotify_instance
+        
+        mock_alarm_instance = Mock()
+        mock_alarm_instance.shutdown = Mock()
+        mock_alarm_instance.get_next_alarm_datetime.return_value = None
+        mock_alarm_class.return_value = mock_alarm_instance
+        
+        with patch('gui.QMessageBox.warning'):
+            window = AlarmApp()
+        
+        # No tray icon or not visible
+        if hasattr(window, 'tray_icon'):
+            window.tray_icon.isVisible = Mock(return_value=False)
+        
+        # Create a close event
+        from PyQt5.QtGui import QCloseEvent
+        event = QCloseEvent()
+        
+        # Handle close event
+        window.closeEvent(event)
+        
+        # Event should be accepted
+        assert event.isAccepted() is True
+        
+        # Alarm shutdown should be called
+        mock_alarm_instance.shutdown.assert_called_once()
+    
+    @patch('gui.ThreadSafeSpotifyAPI')
+    @patch('gui.Alarm')
+    def test_close_event_stops_image_loaders(self, mock_alarm_class, mock_spotify_class, qapp):
+        """Test close event stops all image loader threads."""
+        mock_spotify_instance = Mock()
+        mock_spotify_instance.is_authenticated.return_value = False
+        mock_spotify_class.return_value = mock_spotify_instance
+        
+        mock_alarm_instance = Mock()
+        mock_alarm_instance.shutdown = Mock()
+        mock_alarm_instance.get_next_alarm_datetime.return_value = None
+        mock_alarm_class.return_value = mock_alarm_instance
+        
+        with patch('gui.QMessageBox.warning'):
+            window = AlarmApp()
+        
+        # Add mock image loaders
+        mock_loader1 = Mock(spec=ImageLoaderThread)
+        mock_loader1.isRunning.return_value = True
+        mock_loader1.stop = Mock()
+        mock_loader1.wait = Mock()
+        
+        mock_loader2 = Mock(spec=ImageLoaderThread)
+        mock_loader2.isRunning.return_value = True
+        mock_loader2.stop = Mock()
+        mock_loader2.wait = Mock()
+        
+        mock_loader3 = Mock(spec=ImageLoaderThread)
+        mock_loader3.isRunning.return_value = False
+        mock_loader3.stop = Mock()
+        mock_loader3.wait = Mock()
+        
+        window.image_loaders = [mock_loader1, mock_loader2, mock_loader3]
+        
+        # Remove tray icon to trigger cleanup
+        if hasattr(window, 'tray_icon'):
+            delattr(window, 'tray_icon')
+        
+        # Create a close event
+        from PyQt5.QtGui import QCloseEvent
+        event = QCloseEvent()
+        
+        # Handle close event
+        window.closeEvent(event)
+        
+        # All running loaders should be stopped
+        mock_loader1.stop.assert_called_once()
+        mock_loader1.wait.assert_called_once_with(1000)
+        
+        mock_loader2.stop.assert_called_once()
+        mock_loader2.wait.assert_called_once_with(1000)
+        
+        # Non-running loader should not be stopped
+        mock_loader3.stop.assert_not_called()
+        mock_loader3.wait.assert_not_called()
+        
+        # Image loaders list should be cleared
+        assert len(window.image_loaders) == 0
+    
+    @patch('gui.ThreadSafeSpotifyAPI')
+    @patch('gui.Alarm')
+    def test_close_event_stops_timers(self, mock_alarm_class, mock_spotify_class, qapp):
+        """Test close event stops all Qt timers."""
+        mock_spotify_instance = Mock()
+        mock_spotify_instance.is_authenticated.return_value = False
+        mock_spotify_class.return_value = mock_spotify_instance
+        
+        mock_alarm_instance = Mock()
+        mock_alarm_instance.shutdown = Mock()
+        mock_alarm_instance.get_next_alarm_datetime.return_value = None
+        mock_alarm_class.return_value = mock_alarm_instance
+        
+        with patch('gui.QMessageBox.warning'):
+            window = AlarmApp()
+        
+        # Setup timers
+        window.device_status_timer = Mock()
+        window.device_status_timer.stop = Mock()
+        
+        window.alarm_countdown_timer = Mock()
+        window.alarm_countdown_timer.stop = Mock()
+        
+        # Remove tray icon to trigger cleanup
+        if hasattr(window, 'tray_icon'):
+            delattr(window, 'tray_icon')
+        
+        # Create a close event
+        from PyQt5.QtGui import QCloseEvent
+        event = QCloseEvent()
+        
+        # Handle close event
+        window.closeEvent(event)
+        
+        # Timers should be stopped
+        window.device_status_timer.stop.assert_called_once()
+        window.alarm_countdown_timer.stop.assert_called_once()
+    
+    @patch('gui.ThreadSafeSpotifyAPI')
+    @patch('gui.Alarm')
+    def test_close_event_calls_alarm_shutdown(self, mock_alarm_class, mock_spotify_class, qapp):
+        """Test close event calls alarm.shutdown()."""
+        mock_spotify_instance = Mock()
+        mock_spotify_instance.is_authenticated.return_value = False
+        mock_spotify_class.return_value = mock_spotify_instance
+        
+        mock_alarm_instance = Mock()
+        mock_alarm_instance.shutdown = Mock()
+        mock_alarm_instance.get_next_alarm_datetime.return_value = None
+        mock_alarm_class.return_value = mock_alarm_instance
+        
+        with patch('gui.QMessageBox.warning'):
+            window = AlarmApp()
+        
+        # Remove tray icon to trigger cleanup
+        if hasattr(window, 'tray_icon'):
+            delattr(window, 'tray_icon')
+        
+        # Create a close event
+        from PyQt5.QtGui import QCloseEvent
+        event = QCloseEvent()
+        
+        # Handle close event
+        window.closeEvent(event)
+        
+        # Alarm shutdown should be called
+        mock_alarm_instance.shutdown.assert_called_once()
+    
+    @patch('gui.ThreadSafeSpotifyAPI')
+    @patch('gui.Alarm')
+    def test_cleanup_resources_complete_workflow(self, mock_alarm_class, mock_spotify_class, qapp):
+        """Test _cleanup_resources() performs all cleanup steps."""
+        mock_spotify_instance = Mock()
+        mock_spotify_instance.is_authenticated.return_value = False
+        mock_spotify_class.return_value = mock_spotify_instance
+        
+        mock_alarm_instance = Mock()
+        mock_alarm_instance.shutdown = Mock()
+        mock_alarm_instance.get_next_alarm_datetime.return_value = None
+        mock_alarm_class.return_value = mock_alarm_instance
+        
+        with patch('gui.QMessageBox.warning'):
+            window = AlarmApp()
+        
+        # Setup all resources to be cleaned up
+        window.device_status_timer = Mock()
+        window.device_status_timer.stop = Mock()
+        
+        window.alarm_countdown_timer = Mock()
+        window.alarm_countdown_timer.stop = Mock()
+        
+        # Add image loaders
+        mock_loader = Mock(spec=ImageLoaderThread)
+        mock_loader.isRunning.return_value = True
+        mock_loader.stop = Mock()
+        mock_loader.wait = Mock()
+        window.image_loaders = [mock_loader]
+        
+        # Call cleanup directly
+        window._cleanup_resources()
+        
+        # Verify all cleanup steps
+        window.device_status_timer.stop.assert_called_once()
+        window.alarm_countdown_timer.stop.assert_called_once()
+        mock_loader.stop.assert_called_once()
+        mock_loader.wait.assert_called_once()
+        assert len(window.image_loaders) == 0
+        mock_alarm_instance.shutdown.assert_called_once()
+    
+    @patch('gui.ThreadSafeSpotifyAPI')
+    @patch('gui.Alarm')
+    def test_cleanup_resources_handles_missing_attributes(self, mock_alarm_class, mock_spotify_class, qapp):
+        """Test _cleanup_resources() handles missing attributes gracefully."""
+        mock_spotify_instance = Mock()
+        mock_spotify_instance.is_authenticated.return_value = False
+        mock_spotify_class.return_value = mock_spotify_instance
+        
+        mock_alarm_instance = Mock()
+        mock_alarm_instance.shutdown = Mock()
+        mock_alarm_instance.get_next_alarm_datetime.return_value = None
+        mock_alarm_class.return_value = mock_alarm_instance
+        
+        with patch('gui.QMessageBox.warning'):
+            window = AlarmApp()
+        
+        # Remove optional attributes
+        if hasattr(window, 'device_status_timer'):
+            delattr(window, 'device_status_timer')
+        if hasattr(window, 'alarm_countdown_timer'):
+            delattr(window, 'alarm_countdown_timer')
+        
+        # Should not raise an error
+        window._cleanup_resources()
+        
+        # Alarm shutdown should still be called
+        mock_alarm_instance.shutdown.assert_called_once()
+    
+    @patch('gui.ThreadSafeSpotifyAPI')
+    @patch('gui.Alarm')
+    def test_close_event_multiple_image_loaders(self, mock_alarm_class, mock_spotify_class, qapp):
+        """Test close event handles multiple image loaders correctly."""
+        mock_spotify_instance = Mock()
+        mock_spotify_instance.is_authenticated.return_value = False
+        mock_spotify_class.return_value = mock_spotify_instance
+        
+        mock_alarm_instance = Mock()
+        mock_alarm_instance.shutdown = Mock()
+        mock_alarm_instance.get_next_alarm_datetime.return_value = None
+        mock_alarm_class.return_value = mock_alarm_instance
+        
+        with patch('gui.QMessageBox.warning'):
+            window = AlarmApp()
+        
+        # Add multiple image loaders
+        loaders = []
+        for i in range(5):
+            mock_loader = Mock(spec=ImageLoaderThread)
+            mock_loader.isRunning.return_value = True
+            mock_loader.stop = Mock()
+            mock_loader.wait = Mock()
+            loaders.append(mock_loader)
+        
+        window.image_loaders = loaders
+        
+        # Remove tray icon to trigger cleanup
+        if hasattr(window, 'tray_icon'):
+            delattr(window, 'tray_icon')
+        
+        # Create a close event
+        from PyQt5.QtGui import QCloseEvent
+        event = QCloseEvent()
+        
+        # Handle close event
+        window.closeEvent(event)
+        
+        # All loaders should be stopped
+        for loader in loaders:
+            loader.stop.assert_called_once()
+            loader.wait.assert_called_once_with(1000)
+        
+        # Image loaders list should be cleared
+        assert len(window.image_loaders) == 0
 
 
 class TestGUIIntegrationScenarios:

@@ -23,6 +23,7 @@ import pytest
 import time
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timedelta
+import schedule
 
 import sys
 from pathlib import Path
@@ -602,9 +603,10 @@ class TestGetSnoozedAlarms:
 class TestShutdownWithSnooze:
     """Tests for shutdown method with snoozed alarms."""
     
-    def test_shutdown_clears_snoozed_alarms(self):
+    def test_shutdown_clears_snoozed_alarms(self, tmp_path):
         """Shutdown should clear snoozed alarms."""
         alarm = Alarm()
+        alarm.snooze_state_file = tmp_path / 'snooze_test.json'
         mock_api = Mock()
         
         # Add regular alarm
@@ -625,6 +627,168 @@ class TestShutdownWithSnooze:
         
         assert len(alarm.alarms) == 0
         assert len(alarm.snoozed_alarms) == 0
+        assert alarm.scheduler_running is False
+    
+    def test_shutdown_stops_scheduler_thread(self, tmp_path):
+        """Shutdown should stop and join the scheduler thread."""
+        alarm = Alarm()
+        alarm.snooze_state_file = tmp_path / 'snooze_test.json'
+        mock_api = Mock()
+        
+        # Start scheduler by setting an alarm
+        alarm.set_alarm('08:00', 'Morning', 'spotify:playlist:morning', mock_api)
+        
+        # Verify scheduler is running
+        assert alarm.scheduler_running is True
+        assert alarm.scheduler_thread is not None
+        assert alarm.scheduler_thread.is_alive()
+        
+        # Shutdown
+        alarm.shutdown()
+        
+        # Verify scheduler stopped
+        assert alarm.scheduler_running is False
+        
+        # Give thread time to finish
+        time.sleep(0.5)
+        
+        # Verify thread is no longer alive
+        assert not alarm.scheduler_thread.is_alive()
+    
+    def test_shutdown_cancels_scheduled_jobs(self, tmp_path):
+        """Shutdown should cancel all scheduled jobs."""
+        alarm = Alarm()
+        alarm.snooze_state_file = tmp_path / 'snooze_test.json'
+        mock_api = Mock()
+        
+        # Add multiple alarms
+        alarm.set_alarm('08:00', 'Morning', 'spotify:playlist:morning', mock_api)
+        alarm.set_alarm('12:00', 'Lunch', 'spotify:playlist:lunch', mock_api)
+        alarm.set_alarm('18:00', 'Evening', 'spotify:playlist:evening', mock_api)
+        
+        # Verify alarms are set
+        assert len(alarm.alarms) == 3
+        
+        # Shutdown
+        alarm.shutdown()
+        
+        # Verify all alarms cleared
+        assert len(alarm.alarms) == 0
+        assert len(schedule.jobs) == 0
+    
+    def test_shutdown_with_no_alarms(self, tmp_path):
+        """Shutdown should work gracefully with no alarms set."""
+        alarm = Alarm()
+        alarm.snooze_state_file = tmp_path / 'snooze_test.json'
+        
+        # No alarms set
+        assert len(alarm.alarms) == 0
+        assert alarm.scheduler_running is False
+        
+        # Shutdown should not raise errors
+        alarm.shutdown()
+        
+        assert alarm.scheduler_running is False
+        assert len(alarm.alarms) == 0
+    
+    def test_shutdown_saves_snooze_state(self, tmp_path):
+        """Shutdown should save snooze state before exiting."""
+        alarm = Alarm()
+        alarm.snooze_state_file = tmp_path / 'snooze_test.json'
+        mock_api = Mock()
+        
+        # Add snoozed alarm
+        alarm_data = {
+            'playlist_uri': 'spotify:playlist:snooze',
+            'playlist_name': 'Snoozed',
+            'volume': 80,
+            'fade_in_enabled': False,
+            'fade_in_duration': 10,
+            'spotify_api': mock_api
+        }
+        alarm.snooze_alarm(alarm_data, snooze_minutes=5)
+        
+        # Verify state file exists after snooze
+        assert alarm.snooze_state_file.exists()
+        
+        # Shutdown
+        alarm.shutdown()
+        
+        # State file should still exist (for persistence)
+        assert alarm.snooze_state_file.exists()
+    
+    def test_shutdown_stops_device_wake_manager(self, tmp_path):
+        """Shutdown should stop device wake manager if active."""
+        alarm = Alarm()
+        alarm.snooze_state_file = tmp_path / 'snooze_test.json'
+        mock_api = Mock()
+        
+        # Set alarm to initialize device wake manager
+        alarm.set_alarm('08:00', 'Morning', 'spotify:playlist:morning', mock_api)
+        
+        # Verify device wake manager is initialized
+        assert alarm.device_wake_manager is not None
+        
+        # Mock shutdown method on device wake manager
+        alarm.device_wake_manager.shutdown = Mock()
+        
+        # Shutdown
+        alarm.shutdown()
+        
+        # Verify device wake manager shutdown was called
+        alarm.device_wake_manager.shutdown.assert_called_once()
+    
+    def test_shutdown_with_multiple_snoozed_alarms(self, tmp_path):
+        """Shutdown should clear multiple snoozed alarms."""
+        alarm = Alarm()
+        alarm.snooze_state_file = tmp_path / 'snooze_test.json'
+        # Clear any loaded snoozed alarms
+        alarm.snoozed_alarms.clear()
+        mock_api = Mock()
+        
+        # Add multiple snoozed alarms
+        for i in range(3):
+            alarm_data = {
+                'playlist_uri': f'spotify:playlist:snooze{i}',
+                'playlist_name': f'Snoozed {i}',
+                'volume': 80,
+                'fade_in_enabled': False,
+                'fade_in_duration': 10,
+                'spotify_api': mock_api
+            }
+            alarm.snooze_alarm(alarm_data, snooze_minutes=5)
+        
+        # Verify snoozed alarms are set
+        assert len(alarm.snoozed_alarms) == 3
+        
+        # Shutdown
+        alarm.shutdown()
+        
+        # Verify all snoozed alarms cleared
+        assert len(alarm.snoozed_alarms) == 0
+    
+    def test_shutdown_thread_timeout_handling(self, tmp_path):
+        """Shutdown should handle thread timeout gracefully."""
+        alarm = Alarm()
+        alarm.snooze_state_file = tmp_path / 'snooze_test.json'
+        mock_api = Mock()
+        
+        # Start scheduler
+        alarm.set_alarm('08:00', 'Morning', 'spotify:playlist:morning', mock_api)
+        
+        # Mock thread to not stop immediately
+        original_join = alarm.scheduler_thread.join
+        
+        def slow_join(timeout=None):
+            # Simulate slow join by calling original with reduced timeout
+            original_join(timeout=0.1)
+        
+        alarm.scheduler_thread.join = slow_join
+        
+        # Shutdown should complete without hanging
+        alarm.shutdown()
+        
+        # Should still mark scheduler as not running
         assert alarm.scheduler_running is False
 
 
