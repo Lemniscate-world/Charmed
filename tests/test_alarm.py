@@ -12,18 +12,22 @@ Tests cover:
 - User-friendly error messages
 - Snooze functionality (snooze_alarm, get_snoozed_alarms)
 - Shutdown with snoozed alarms
+- Fade-in controller functionality (Phase 2)
+- Day-specific scheduling (Phase 2)
+- Template management (Phase 2)
 
 Run with: python -m pytest tests/test_alarm.py -v
 """
 
 import pytest
 import time
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
+from datetime import datetime, timedelta
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from alarm import Alarm
+from alarm import Alarm, AlarmTemplate, TemplateManager
 
 
 class TestAlarmInit:
@@ -263,7 +267,7 @@ class TestPlayPlaylist:
         mock_api = Mock()
         
         call_count = 0
-        def side_effect(*args):
+        def side_effect(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             if call_count < 2:
@@ -414,7 +418,7 @@ class TestConditionalPlayback:
         
         # With days=None, should always play
         alarm._conditional_play_playlist(
-            'spotify:playlist:test', mock_api, 80, 'Test', False, 10, None
+            'spotify:playlist:test', mock_api, 80, 'Test', False, 10, None, 'test-id'
         )
         
         mock_api.play_playlist_by_uri.assert_called_once()
@@ -425,13 +429,12 @@ class TestConditionalPlayback:
         mock_api = Mock()
         
         # Get today's actual day name
-        from datetime import datetime
         today = datetime.now().strftime('%A')
         
         # Set active days to include today
         alarm._conditional_play_playlist(
             'spotify:playlist:test', mock_api, 80, 'Test', False, 10, 
-            [today]
+            [today], 'test-id'
         )
         
         mock_api.play_playlist_by_uri.assert_called_once()
@@ -442,7 +445,6 @@ class TestConditionalPlayback:
         mock_api = Mock()
         
         # Get today's actual day name and create a list without it
-        from datetime import datetime
         today = datetime.now().strftime('%A')
         
         # Create list of all days except today
@@ -451,7 +453,7 @@ class TestConditionalPlayback:
         
         alarm._conditional_play_playlist(
             'spotify:playlist:test', mock_api, 80, 'Test', False, 10, 
-            inactive_days
+            inactive_days, 'test-id'
         )
         
         mock_api.play_playlist_by_uri.assert_not_called()
@@ -627,7 +629,7 @@ class TestShutdownWithSnooze:
 
 
 class TestFadeInFeature:
-    """Tests for fade-in feature."""
+    """Tests for fade-in feature - Phase 2."""
     
     def test_set_alarm_with_fade_in_enabled(self):
         """Setting alarm with fade-in should store fade-in parameters."""
@@ -715,7 +717,7 @@ class TestFadeInFeature:
 
 
 class TestFadeInController:
-    """Tests for FadeInController class."""
+    """Tests for FadeInController class - Phase 2."""
     
     def test_fade_in_controller_available(self):
         """FadeInController should be available when PyQt5 is installed."""
@@ -756,3 +758,477 @@ class TestFadeInController:
             assert abs(controller.volume_step - expected_volume_step) < 0.01
         except ImportError:
             pytest.skip("PyQt5 not available")
+    
+    def test_fade_in_controller_start(self):
+        """FadeInController should start fade-in process."""
+        try:
+            from alarm import FadeInController
+            mock_api = Mock()
+            
+            controller = FadeInController(mock_api, target_volume=80, duration_minutes=10)
+            controller.start()
+            
+            assert controller.is_active is True
+            assert controller.current_step == 0
+            mock_api.set_volume.assert_called_with(0)
+        except ImportError:
+            pytest.skip("PyQt5 not available")
+    
+    def test_fade_in_controller_stop(self):
+        """FadeInController should stop fade-in process."""
+        try:
+            from alarm import FadeInController
+            mock_api = Mock()
+            
+            controller = FadeInController(mock_api, target_volume=80, duration_minutes=10)
+            controller.start()
+            assert controller.is_active is True
+            
+            controller.stop()
+            assert controller.is_active is False
+        except ImportError:
+            pytest.skip("PyQt5 not available")
+    
+    def test_fade_in_controller_volume_progression(self):
+        """FadeInController should gradually increase volume."""
+        try:
+            from alarm import FadeInController
+            mock_api = Mock()
+            
+            controller = FadeInController(mock_api, target_volume=100, duration_minutes=10)
+            controller.start()
+            
+            # Simulate several steps
+            for i in range(5):
+                controller._update_volume()
+            
+            # Volume should have increased
+            assert controller.current_volume > 0
+            assert controller.current_volume < controller.target_volume
+            assert mock_api.set_volume.call_count >= 5
+        except ImportError:
+            pytest.skip("PyQt5 not available")
+
+
+class TestAlarmTemplate:
+    """Tests for AlarmTemplate dataclass - Phase 2."""
+    
+    def test_alarm_template_creation(self):
+        """Should create alarm template with all fields."""
+        template = AlarmTemplate(
+            name='Morning Alarm',
+            time='07:00',
+            playlist_name='Wake Up Mix',
+            playlist_uri='spotify:playlist:wake',
+            volume=75,
+            fade_in_enabled=True,
+            fade_in_duration=15,
+            days=['Monday', 'Wednesday', 'Friday']
+        )
+        
+        assert template.name == 'Morning Alarm'
+        assert template.time == '07:00'
+        assert template.playlist_name == 'Wake Up Mix'
+        assert template.volume == 75
+        assert template.fade_in_enabled is True
+        assert template.fade_in_duration == 15
+        assert template.days == ['Monday', 'Wednesday', 'Friday']
+    
+    def test_alarm_template_defaults(self):
+        """Should use default values for optional fields."""
+        template = AlarmTemplate(
+            name='Simple',
+            time='08:00',
+            playlist_name='Playlist',
+            playlist_uri='spotify:playlist:test'
+        )
+        
+        assert template.volume == 80
+        assert template.fade_in_enabled is False
+        assert template.fade_in_duration == 10
+        assert template.days is None
+    
+    def test_alarm_template_to_dict(self):
+        """Should convert template to dictionary."""
+        template = AlarmTemplate(
+            name='Test',
+            time='09:00',
+            playlist_name='Test Playlist',
+            playlist_uri='spotify:playlist:test',
+            volume=85
+        )
+        
+        template_dict = template.to_dict()
+        
+        assert template_dict['name'] == 'Test'
+        assert template_dict['time'] == '09:00'
+        assert template_dict['volume'] == 85
+    
+    def test_alarm_template_from_dict(self):
+        """Should create template from dictionary."""
+        data = {
+            'name': 'From Dict',
+            'time': '10:00',
+            'playlist_name': 'Dict Playlist',
+            'playlist_uri': 'spotify:playlist:dict',
+            'volume': 70,
+            'fade_in_enabled': True,
+            'fade_in_duration': 20,
+            'days': ['Tuesday', 'Thursday']
+        }
+        
+        template = AlarmTemplate.from_dict(data)
+        
+        assert template.name == 'From Dict'
+        assert template.fade_in_enabled is True
+        assert template.days == ['Tuesday', 'Thursday']
+
+
+class TestTemplateManager:
+    """Tests for TemplateManager class - Phase 2."""
+    
+    def test_template_manager_initialization(self, tmp_path):
+        """Should initialize with default or custom path."""
+        templates_file = tmp_path / 'templates.json'
+        manager = TemplateManager(templates_file)
+        
+        assert manager.templates_file == templates_file
+    
+    def test_load_templates_empty(self, tmp_path):
+        """Should return empty list when no templates file exists."""
+        templates_file = tmp_path / 'templates.json'
+        manager = TemplateManager(templates_file)
+        
+        templates = manager.load_templates()
+        
+        assert templates == []
+    
+    def test_save_and_load_templates(self, tmp_path):
+        """Should save and load templates correctly."""
+        templates_file = tmp_path / 'templates.json'
+        manager = TemplateManager(templates_file)
+        
+        template1 = AlarmTemplate(
+            name='Morning',
+            time='07:00',
+            playlist_name='Morning Mix',
+            playlist_uri='spotify:playlist:morning',
+            volume=75
+        )
+        
+        template2 = AlarmTemplate(
+            name='Evening',
+            time='18:00',
+            playlist_name='Evening Chill',
+            playlist_uri='spotify:playlist:evening',
+            volume=60,
+            fade_in_enabled=True,
+            fade_in_duration=20
+        )
+        
+        success = manager.save_templates([template1, template2])
+        assert success is True
+        
+        loaded = manager.load_templates()
+        assert len(loaded) == 2
+        assert loaded[0].name == 'Morning'
+        assert loaded[1].name == 'Evening'
+        assert loaded[1].fade_in_enabled is True
+    
+    def test_add_template(self, tmp_path):
+        """Should add new template."""
+        templates_file = tmp_path / 'templates.json'
+        manager = TemplateManager(templates_file)
+        
+        template = AlarmTemplate(
+            name='New Template',
+            time='08:00',
+            playlist_name='New Playlist',
+            playlist_uri='spotify:playlist:new'
+        )
+        
+        success = manager.add_template(template)
+        assert success is True
+        
+        templates = manager.load_templates()
+        assert len(templates) == 1
+        assert templates[0].name == 'New Template'
+    
+    def test_add_template_duplicate_name(self, tmp_path):
+        """Should reject duplicate template names."""
+        templates_file = tmp_path / 'templates.json'
+        manager = TemplateManager(templates_file)
+        
+        template1 = AlarmTemplate(
+            name='Duplicate',
+            time='08:00',
+            playlist_name='Playlist 1',
+            playlist_uri='spotify:playlist:1'
+        )
+        
+        template2 = AlarmTemplate(
+            name='Duplicate',
+            time='09:00',
+            playlist_name='Playlist 2',
+            playlist_uri='spotify:playlist:2'
+        )
+        
+        manager.add_template(template1)
+        success = manager.add_template(template2)
+        
+        assert success is False
+        templates = manager.load_templates()
+        assert len(templates) == 1
+    
+    def test_update_template(self, tmp_path):
+        """Should update existing template."""
+        templates_file = tmp_path / 'templates.json'
+        manager = TemplateManager(templates_file)
+        
+        original = AlarmTemplate(
+            name='Original',
+            time='08:00',
+            playlist_name='Original Playlist',
+            playlist_uri='spotify:playlist:original',
+            volume=70
+        )
+        
+        manager.add_template(original)
+        
+        updated = AlarmTemplate(
+            name='Updated',
+            time='09:00',
+            playlist_name='Updated Playlist',
+            playlist_uri='spotify:playlist:updated',
+            volume=80
+        )
+        
+        success = manager.update_template('Original', updated)
+        assert success is True
+        
+        templates = manager.load_templates()
+        assert len(templates) == 1
+        assert templates[0].name == 'Updated'
+        assert templates[0].volume == 80
+    
+    def test_delete_template(self, tmp_path):
+        """Should delete template by name."""
+        templates_file = tmp_path / 'templates.json'
+        manager = TemplateManager(templates_file)
+        
+        template1 = AlarmTemplate(
+            name='Keep',
+            time='08:00',
+            playlist_name='Keep Playlist',
+            playlist_uri='spotify:playlist:keep'
+        )
+        
+        template2 = AlarmTemplate(
+            name='Delete',
+            time='09:00',
+            playlist_name='Delete Playlist',
+            playlist_uri='spotify:playlist:delete'
+        )
+        
+        manager.add_template(template1)
+        manager.add_template(template2)
+        
+        success = manager.delete_template('Delete')
+        assert success is True
+        
+        templates = manager.load_templates()
+        assert len(templates) == 1
+        assert templates[0].name == 'Keep'
+    
+    def test_get_template(self, tmp_path):
+        """Should retrieve template by name."""
+        templates_file = tmp_path / 'templates.json'
+        manager = TemplateManager(templates_file)
+        
+        template = AlarmTemplate(
+            name='Find Me',
+            time='10:00',
+            playlist_name='Find Playlist',
+            playlist_uri='spotify:playlist:find'
+        )
+        
+        manager.add_template(template)
+        
+        found = manager.get_template('Find Me')
+        assert found is not None
+        assert found.name == 'Find Me'
+        
+        not_found = manager.get_template('Not Exist')
+        assert not_found is None
+
+
+class TestDaySpecificScheduling:
+    """Tests for day-specific alarm scheduling - Phase 2."""
+    
+    def test_alarm_triggers_on_specified_days(self):
+        """Alarm should only trigger on specified days."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        today = datetime.now().strftime('%A')
+        
+        # Set alarm for today only
+        alarm.set_alarm(
+            '12:00', 'Today Only', 'spotify:playlist:today',
+            mock_api, 80, False, 10, [today]
+        )
+        
+        # Manually trigger conditional play
+        alarm._conditional_play_playlist(
+            'spotify:playlist:today', mock_api, 80, 'Today Only',
+            False, 10, [today], 'test-id'
+        )
+        
+        mock_api.play_playlist_by_uri.assert_called_once()
+    
+    def test_get_next_trigger_time_with_days(self):
+        """Should calculate next trigger considering day restrictions."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        # Set alarm for specific days
+        alarm.set_alarm(
+            '08:00', 'Weekdays', 'spotify:playlist:weekdays',
+            mock_api, 80, False, 10, ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+        )
+        
+        alarm_info = alarm.get_alarms()[0]
+        next_time = alarm.get_next_trigger_time(alarm_info)
+        
+        # Should return a future datetime
+        assert next_time is not None
+        assert next_time > datetime.now()
+        
+        # Should be on a weekday
+        assert next_time.strftime('%A') in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+    
+    def test_get_upcoming_alarms_with_day_restrictions(self):
+        """Should return upcoming alarms respecting day restrictions."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        # Set alarm for weekdays
+        alarm.set_alarm(
+            '07:00', 'Weekday Morning', 'spotify:playlist:weekday',
+            mock_api, 80, False, 10, 'weekdays'
+        )
+        
+        # Set alarm for weekends
+        alarm.set_alarm(
+            '09:00', 'Weekend Morning', 'spotify:playlist:weekend',
+            mock_api, 80, False, 10, 'weekends'
+        )
+        
+        upcoming = alarm.get_upcoming_alarms(days=7)
+        
+        # Should have multiple upcoming triggers
+        assert len(upcoming) > 0
+        
+        # Check that each trigger respects day restrictions
+        for item in upcoming:
+            trigger_day = item['datetime'].strftime('%A')
+            alarm_info = item['alarm_info']
+            days = alarm_info.get('days')
+            
+            if days:
+                assert trigger_day in days
+
+
+class TestSnoozeLogic:
+    """Tests for snooze logic - Phase 2."""
+    
+    def test_snooze_reschedules_alarm(self):
+        """Snooze should reschedule alarm for future time."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm_data = {
+            'playlist_uri': 'spotify:playlist:snooze',
+            'playlist_name': 'Snooze Test',
+            'volume': 80,
+            'fade_in_enabled': False,
+            'fade_in_duration': 10,
+            'spotify_api': mock_api
+        }
+        
+        before_snooze = datetime.now()
+        alarm.snooze_alarm(alarm_data, snooze_minutes=10)
+        
+        snoozed = alarm.get_snoozed_alarms()[0]
+        snooze_time = snoozed['snooze_time']
+        
+        # Snooze time should be approximately 10 minutes from now
+        expected_time = before_snooze + timedelta(minutes=10)
+        time_diff = abs((snooze_time - expected_time).total_seconds())
+        
+        assert time_diff < 5  # Within 5 seconds tolerance
+    
+    def test_snooze_preserves_alarm_settings(self):
+        """Snooze should preserve all alarm settings."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm_data = {
+            'playlist_uri': 'spotify:playlist:preserve',
+            'playlist_name': 'Preserve Test',
+            'volume': 65,
+            'fade_in_enabled': True,
+            'fade_in_duration': 25,
+            'spotify_api': mock_api
+        }
+        
+        alarm.snooze_alarm(alarm_data, snooze_minutes=15)
+        
+        # Check that snoozed alarm has all settings preserved
+        snoozed_alarms = alarm.snoozed_alarms
+        assert len(snoozed_alarms) == 1
+        
+        snoozed = snoozed_alarms[0]
+        assert snoozed['volume'] == 65
+        assert snoozed['fade_in_enabled'] is True
+        assert snoozed['fade_in_duration'] == 25
+    
+    def test_multiple_snoozes_independent(self):
+        """Multiple snoozed alarms should be independent."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm_data_1 = {
+            'playlist_uri': 'spotify:playlist:snooze1',
+            'playlist_name': 'Snooze 1',
+            'volume': 70,
+            'fade_in_enabled': False,
+            'fade_in_duration': 10,
+            'spotify_api': mock_api
+        }
+        
+        alarm_data_2 = {
+            'playlist_uri': 'spotify:playlist:snooze2',
+            'playlist_name': 'Snooze 2',
+            'volume': 85,
+            'fade_in_enabled': True,
+            'fade_in_duration': 20,
+            'spotify_api': mock_api
+        }
+        
+        alarm.snooze_alarm(alarm_data_1, snooze_minutes=5)
+        alarm.snooze_alarm(alarm_data_2, snooze_minutes=10)
+        
+        snoozed = alarm.get_snoozed_alarms()
+        assert len(snoozed) == 2
+        
+        # Verify each has correct settings
+        snooze_1 = [s for s in snoozed if s['original_playlist'] == 'Snooze 1'][0]
+        snooze_2 = [s for s in snoozed if s['original_playlist'] == 'Snooze 2'][0]
+        
+        assert snooze_1['snooze_duration'] == 5
+        assert snooze_2['snooze_duration'] == 10
+
+
+if __name__ == '__main__':
+    pytest.main([__file__, '-v'])
