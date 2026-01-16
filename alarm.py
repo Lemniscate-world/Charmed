@@ -7,17 +7,27 @@ the scheduler in a background daemon thread.
 
 Features:
 - Schedule alarms at specific times (HH:MM format)
-- Store alarm metadata (time, playlist, volume)
+- Store alarm metadata (time, playlist, volume, fade-in settings)
 - List all scheduled alarms
 - Remove individual alarms
 - Set volume before playing
+- Gradual volume fade-in (5-30 minutes) with smooth linear progression
 - Thread-safe alarm list management
 - Retry logic with exponential backoff for Spotify API failures
 - System tray notifications for alarm trigger status
+- Snooze functionality with fade-in preservation
+
+Fade-In Implementation:
+- FadeInController: QTimer-based volume controller with 5-second intervals
+- Smooth linear volume ramp from 0% to target volume
+- Configurable duration between 5-30 minutes
+- Thread-safe operation compatible with concurrent alarms
+- Preview mode for testing fade-in before alarm triggers
 
 Dependencies:
 - schedule: Job scheduling library
 - threading: Background execution and synchronization
+- PyQt5: QTimer and signals for fade-in controller (optional)
 """
 
 import schedule  # Job scheduling library

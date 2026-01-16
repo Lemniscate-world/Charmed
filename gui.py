@@ -1331,6 +1331,7 @@ class AlarmSetupDialog(QDialog):
     - Select specific days of the week for the alarm
     - Enable/disable gradual volume fade-in
     - Fade-in duration (5-30 minutes)
+    - Preview fade-in with current playback
     """
     
     def __init__(self, parent=None, playlist_name='', time_str='', volume=80):
@@ -1350,6 +1351,8 @@ class AlarmSetupDialog(QDialog):
         
         self.fade_in_enabled = False
         self.fade_in_duration = 10
+        self.target_volume = volume
+        self.preview_controller = None
         
         self._build_ui(playlist_name, time_str, volume)
     
@@ -1467,6 +1470,52 @@ class AlarmSetupDialog(QDialog):
         
         layout.addWidget(duration_widget)
         
+        # Preview section
+        preview_widget = QWidget()
+        preview_layout = QVBoxLayout(preview_widget)
+        preview_layout.setContentsMargins(24, 8, 0, 0)
+        preview_layout.setSpacing(8)
+        
+        preview_label = QLabel('Preview fade-in:')
+        preview_label.setStyleSheet('color: #888; font-size: 12px;')
+        preview_layout.addWidget(preview_label)
+        
+        preview_button_layout = QHBoxLayout()
+        
+        self.btn_preview = QPushButton('Preview Fade-In (30s)')
+        self.btn_preview.setEnabled(False)
+        self.btn_preview.clicked.connect(self._preview_fade_in)
+        self.btn_preview.setStyleSheet(
+            'background-color: #2a2a2a; color: #1DB954; '
+            'border: 1px solid #1DB954; padding: 8px 16px; border-radius: 4px;'
+        )
+        self.btn_preview.setToolTip('Preview fade-in over 30 seconds with current Spotify playback')
+        preview_button_layout.addWidget(self.btn_preview)
+        
+        self.btn_stop_preview = QPushButton('Stop Preview')
+        self.btn_stop_preview.setEnabled(False)
+        self.btn_stop_preview.clicked.connect(self._stop_preview)
+        self.btn_stop_preview.setStyleSheet(
+            'background-color: #2a2a2a; color: #FF6B6B; '
+            'border: 1px solid #FF6B6B; padding: 8px 16px; border-radius: 4px;'
+        )
+        preview_button_layout.addWidget(self.btn_stop_preview)
+        preview_button_layout.addStretch()
+        
+        preview_layout.addLayout(preview_button_layout)
+        
+        self.preview_status_label = QLabel('')
+        self.preview_status_label.setStyleSheet('color: #888; font-size: 11px; font-style: italic;')
+        preview_layout.addWidget(self.preview_status_label)
+        
+        layout.addWidget(preview_widget)
+        
+        # Separator
+        separator2 = QFrame()
+        separator2.setFrameShape(QFrame.HLine)
+        separator2.setFrameShadow(QFrame.Sunken)
+        layout.addWidget(separator2)
+        
         # Buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
@@ -1503,7 +1552,11 @@ class AlarmSetupDialog(QDialog):
     def _on_fade_in_toggled(self, checked):
         """Handle fade-in checkbox toggle."""
         self.duration_slider.setEnabled(checked)
+        self.btn_preview.setEnabled(checked)
         self.fade_in_enabled = checked
+        
+        if not checked and self.preview_controller:
+            self._stop_preview()
     
     def _on_duration_changed(self, value):
         """Handle duration slider change."""
@@ -1526,6 +1579,100 @@ class AlarmSetupDialog(QDialog):
         self.selected_days = None if len(selected) == 7 else selected
         
         self.accept()
+    
+    def _preview_fade_in(self):
+        """Start a 30-second preview of the fade-in effect."""
+        parent_app = self.parent()
+        if not parent_app or not hasattr(parent_app, 'spotify_api'):
+            QMessageBox.warning(
+                self,
+                'Preview Unavailable',
+                'Cannot preview fade-in: Spotify API not available.'
+            )
+            return
+        
+        spotify_api = parent_app.spotify_api
+        if not spotify_api or not spotify_api.is_authenticated():
+            QMessageBox.warning(
+                self,
+                'Not Authenticated',
+                'Please log in to Spotify before previewing fade-in.'
+            )
+            return
+        
+        try:
+            from alarm import FadeInController, PYQT_AVAILABLE
+            
+            if not PYQT_AVAILABLE:
+                QMessageBox.warning(
+                    self,
+                    'Preview Unavailable',
+                    'PyQt5 is required for fade-in preview.'
+                )
+                return
+            
+            # Stop any existing preview
+            if self.preview_controller and self.preview_controller.is_running():
+                self.preview_controller.stop()
+            
+            # Create a 30-second preview controller (0.5 minutes)
+            preview_duration = 0.5
+            self.preview_controller = FadeInController(
+                spotify_api, self.target_volume, preview_duration
+            )
+            
+            # Connect completion signal
+            self.preview_controller.fade_complete.connect(self._on_preview_complete)
+            
+            # Start preview
+            self.preview_controller.start()
+            
+            # Update UI
+            self.btn_preview.setEnabled(False)
+            self.btn_stop_preview.setEnabled(True)
+            self.preview_status_label.setText(
+                f'Preview in progress: fading to {self.target_volume}% over 30 seconds...'
+            )
+            self.preview_status_label.setStyleSheet('color: #1DB954; font-size: 11px; font-style: italic;')
+            
+            logger.info(f'Started fade-in preview: 30s to {self.target_volume}%')
+            
+        except Exception as e:
+            logger.error(f'Failed to start fade-in preview: {e}', exc_info=True)
+            QMessageBox.warning(
+                self,
+                'Preview Failed',
+                f'Could not start fade-in preview:\n{str(e)}\n\n'
+                'Make sure Spotify is playing on an active device.'
+            )
+    
+    def _stop_preview(self):
+        """Stop the fade-in preview."""
+        if self.preview_controller:
+            self.preview_controller.stop()
+            self.preview_controller = None
+        
+        self.btn_preview.setEnabled(self.fade_in_enabled)
+        self.btn_stop_preview.setEnabled(False)
+        self.preview_status_label.setText('Preview stopped')
+        self.preview_status_label.setStyleSheet('color: #FF6B6B; font-size: 11px; font-style: italic;')
+        
+        logger.info('Stopped fade-in preview')
+    
+    def _on_preview_complete(self):
+        """Handle preview completion."""
+        self.btn_preview.setEnabled(self.fade_in_enabled)
+        self.btn_stop_preview.setEnabled(False)
+        self.preview_status_label.setText('Preview complete')
+        self.preview_status_label.setStyleSheet('color: #888; font-size: 11px; font-style: italic;')
+        
+        logger.info('Fade-in preview completed')
+    
+    def closeEvent(self, event):
+        """Clean up when dialog closes."""
+        if self.preview_controller and self.preview_controller.is_running():
+            self.preview_controller.stop()
+        event.accept()
 
 
 class AlarmManagerDialog(QDialog):

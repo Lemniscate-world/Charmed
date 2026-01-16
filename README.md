@@ -9,6 +9,8 @@ A PyQt5-based desktop application that wakes you up with your favorite Spotify p
 - 🎵 **Playlist Browser** - Browse and select from your Spotify playlists with cover art thumbnails
 - ⏰ **Smart Alarms** - Schedule daily recurring alarms for specific times
 - 🔊 **Volume Control** - Set custom volume levels for each alarm
+- 🌅 **Gradual Wake-Up** - Fade-in volume from 0% to target over 5-30 minutes for gentle awakening
+- 🎧 **Preview Mode** - Test your fade-in settings with a 30-second preview before setting the alarm
 - 🎨 **Spotify-Themed UI** - Dark theme matching Spotify's visual design
 - 🔐 **Secure Authentication** - OAuth 2.0 integration with Spotify
 - 🧵 **Thread-Safe** - Concurrent alarm scheduling and GUI operations
@@ -85,6 +87,10 @@ A PyQt5-based desktop application that wakes you up with your favorite Spotify p
 3. **Configure Alarm**
    - Set the desired wake-up time using the time picker
    - Adjust the alarm volume with the slider (0-100%)
+   - **Optional**: Enable gradual volume fade-in
+     - Check "Enable gradual volume fade-in" in the alarm setup dialog
+     - Choose fade-in duration (5-30 minutes) using the slider
+     - Click "Preview Fade-In (30s)" to test with current playback
    - Click "Set Alarm" to schedule
 
 4. **Manage Alarms**
@@ -92,11 +98,42 @@ A PyQt5-based desktop application that wakes you up with your favorite Spotify p
    - Delete alarms you no longer need
    - Multiple alarms can be active simultaneously
 
+### Using the Gradual Wake-Up Feature
+
+The fade-in feature gradually increases volume from 0% to your target volume over a configurable duration, providing a gentle and natural wake-up experience.
+
+**How to Enable Fade-In:**
+
+1. Click "Set Alarm" after selecting your playlist and time
+2. In the Alarm Setup dialog, check "Enable gradual volume fade-in"
+3. Use the slider to set fade-in duration (5-30 minutes)
+4. **Preview your settings**: Click "Preview Fade-In (30s)" to hear a 30-second compressed version
+   - Make sure Spotify is playing before previewing
+   - The preview will fade from 0% to your target volume over 30 seconds
+   - You can stop the preview at any time
+5. Click "Set Alarm" to save your alarm with fade-in enabled
+
+**Fade-In Technical Details:**
+
+- Volume increases in smooth steps every 5 seconds
+- For a 10-minute fade-in: 120 volume adjustments over 600 seconds
+- Algorithm ensures linear volume progression
+- Thread-safe implementation prevents conflicts with other alarms
+- Fade-in state is persisted with each alarm
+
+**Recommended Durations:**
+
+- **5-10 minutes**: Light sleepers or quick wake-ups
+- **15-20 minutes**: Most users, natural wake-up
+- **25-30 minutes**: Deep sleepers or gentle meditation wake-up
+
 ### Tips for Best Experience
 
 - **Keep Spotify Open**: Leave Spotify desktop/mobile app open on a device
 - **Active Device**: Ensure you have an active Spotify device (computer, phone, speaker)
 - **Volume Testing**: Test alarm volume before your actual wake-up time
+- **Fade-In Preview**: Use the 30-second preview to test your fade-in settings
+- **Gentle Wake-Up**: Enable 15-20 minute fade-in for the most natural wake-up experience
 - **Playlist Length**: Use playlists with multiple songs for gradual wake-up
 - **Premium Account**: Spotify Premium is required for playback API access
 
@@ -371,12 +408,12 @@ See [LICENSE](LICENSE) file for details.
 
 - [ ] System tray integration for background running
 - [ ] Multiple alarm profiles with different settings
-- [ ] Fade-in volume animation
-- [ ] Snooze functionality
 - [ ] Alarm history and statistics
 - [ ] Custom notification sounds
 - [ ] Integration with calendar apps
 - [ ] Smart alarm (play based on sleep cycle)
+- [ ] Weekend vs weekday alarm profiles
+- [ ] Weather-based playlist selection
 
 ## Support
 

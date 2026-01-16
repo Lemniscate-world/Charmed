@@ -624,3 +624,135 @@ class TestShutdownWithSnooze:
         assert len(alarm.alarms) == 0
         assert len(alarm.snoozed_alarms) == 0
         assert alarm.scheduler_running is False
+
+
+class TestFadeInFeature:
+    """Tests for fade-in feature."""
+    
+    def test_set_alarm_with_fade_in_enabled(self):
+        """Setting alarm with fade-in should store fade-in parameters."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm.set_alarm(
+            '07:30', 'Morning Playlist', 'spotify:playlist:morning',
+            mock_api, volume=80, fade_in_enabled=True, fade_in_duration=15
+        )
+        
+        assert len(alarm.alarms) == 1
+        assert alarm.alarms[0]['fade_in_enabled'] is True
+        assert alarm.alarms[0]['fade_in_duration'] == 15
+    
+    def test_set_alarm_fade_in_defaults(self):
+        """Fade-in should default to disabled with 10 minute duration."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm.set_alarm('08:00', 'Test', 'spotify:playlist:test', mock_api)
+        
+        assert alarm.alarms[0]['fade_in_enabled'] is False
+        assert alarm.alarms[0]['fade_in_duration'] == 10
+    
+    def test_get_alarms_includes_fade_in_info(self):
+        """get_alarms should return fade-in information."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm.set_alarm(
+            '09:00', 'Test Playlist', 'spotify:playlist:test',
+            mock_api, volume=70, fade_in_enabled=True, fade_in_duration=20
+        )
+        
+        result = alarm.get_alarms()
+        
+        assert len(result) == 1
+        assert result[0]['fade_in_enabled'] is True
+        assert result[0]['fade_in_duration'] == 20
+    
+    def test_fade_in_duration_range(self):
+        """Fade-in duration should be within 5-30 minute range."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        # Test minimum
+        alarm.set_alarm(
+            '06:00', 'Min Fade', 'spotify:playlist:min',
+            mock_api, fade_in_enabled=True, fade_in_duration=5
+        )
+        assert alarm.alarms[0]['fade_in_duration'] == 5
+        
+        # Test maximum
+        alarm.set_alarm(
+            '07:00', 'Max Fade', 'spotify:playlist:max',
+            mock_api, fade_in_enabled=True, fade_in_duration=30
+        )
+        assert alarm.alarms[1]['fade_in_duration'] == 30
+        
+        # Test mid-range
+        alarm.set_alarm(
+            '08:00', 'Mid Fade', 'spotify:playlist:mid',
+            mock_api, fade_in_enabled=True, fade_in_duration=15
+        )
+        assert alarm.alarms[2]['fade_in_duration'] == 15
+    
+    def test_snooze_with_fade_in(self):
+        """Snoozed alarms should preserve fade-in settings."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm_data = {
+            'playlist_uri': 'spotify:playlist:fade',
+            'playlist_name': 'Fade Playlist',
+            'volume': 75,
+            'fade_in_enabled': True,
+            'fade_in_duration': 20,
+            'spotify_api': mock_api
+        }
+        
+        alarm.snooze_alarm(alarm_data, snooze_minutes=10)
+        
+        assert len(alarm.snoozed_alarms) == 1
+
+
+class TestFadeInController:
+    """Tests for FadeInController class."""
+    
+    def test_fade_in_controller_available(self):
+        """FadeInController should be available when PyQt5 is installed."""
+        try:
+            from alarm import FadeInController, PYQT_AVAILABLE
+            assert PYQT_AVAILABLE is True
+            assert FadeInController is not None
+        except ImportError:
+            pytest.skip("PyQt5 not available")
+    
+    def test_fade_in_controller_initialization(self):
+        """FadeInController should initialize with correct parameters."""
+        try:
+            from alarm import FadeInController
+            mock_api = Mock()
+            
+            controller = FadeInController(mock_api, target_volume=80, duration_minutes=10)
+            
+            assert controller.target_volume == 80
+            assert controller.duration_minutes == 10
+            assert controller.is_active is False
+            assert controller.current_volume == 0
+        except ImportError:
+            pytest.skip("PyQt5 not available")
+    
+    def test_fade_in_controller_calculates_steps(self):
+        """FadeInController should calculate correct number of steps."""
+        try:
+            from alarm import FadeInController
+            mock_api = Mock()
+            
+            # 10 minutes = 600 seconds / 5 second intervals = 120 steps
+            controller = FadeInController(mock_api, target_volume=100, duration_minutes=10)
+            
+            assert controller.step_interval_ms == 5000
+            assert controller.total_steps == 120
+            expected_volume_step = 100 / 120
+            assert abs(controller.volume_step - expected_volume_step) < 0.01
+        except ImportError:
+            pytest.skip("PyQt5 not available")
