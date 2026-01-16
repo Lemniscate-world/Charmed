@@ -1,34 +1,41 @@
-from PyQt5 import QtWidgets
-from gui import AlarmApp, CrashReportDialog
-from logging_config import setup_logging, get_logger
-from pathlib import Path
-import sys
-import logging
-import traceback
 import os
+import logging
+import sys
+from pathlib import Path
 
+# Import PyQt5 for GUI
+from PyQt5 import QtWidgets
 
+# Import existing backend
+from logging_config import setup_logging, get_logger
+from gui import AlarmApp, CrashReportDialog
+from gui_setup_wizard import SetupWizard
+
+# Setup logging
+setup_logging()
+logger = get_logger(__name__)
+
+# Qt GUI support
 def exception_hook(exc_type, exc_value, exc_traceback):
     """
     Global exception handler for uncaught exceptions.
-    
+
     Shows crash report dialog and logs the error before the application exits.
     """
     if issubclass(exc_type, KeyboardInterrupt):
         sys.__excepthook__(exc_type, exc_value, exc_traceback)
         return
-    
-    logger = logging.getLogger(__name__)
+
     logger.critical(
         "Uncaught exception",
         exc_info=(exc_type, exc_value, exc_traceback)
     )
-    
+
     app = QtWidgets.QApplication.instance()
     if app:
         dialog = CrashReportDialog(exc_type, exc_value, exc_traceback)
         dialog.exec_()
-    
+
     sys.__excepthook__(exc_type, exc_value, exc_traceback)
 
 
