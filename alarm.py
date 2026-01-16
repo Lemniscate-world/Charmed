@@ -177,7 +177,7 @@ class Alarm:
         logger.info("Alarm manager initialized")
 
     def set_alarm(self, time_str, playlist_name, playlist_uri, spotify_api, volume=80, 
-                   fade_in_enabled=False, fade_in_duration=10):
+                   fade_in_enabled=False, fade_in_duration=10, days=None):
         """
         Schedule a new alarm.
 
@@ -192,6 +192,8 @@ class Alarm:
             volume: Volume level 0-100 (default 80).
             fade_in_enabled: Whether to enable gradual volume fade-in (default False).
             fade_in_duration: Fade-in duration in minutes, 5-30 (default 10).
+            days: List of weekday names ('Monday', 'Tuesday', etc.), or special values
+                  'weekdays' (Mon-Fri), 'weekends' (Sat-Sun), or None for every day (default None).
 
         Raises:
             ValueError: If time format is invalid.
@@ -199,7 +201,7 @@ class Alarm:
         logger.info(
             f"Scheduling alarm - Time: {time_str}, Playlist: {playlist_name}, "
             f"URI: {playlist_uri}, Volume: {volume}%, "
-            f"Fade-in: {fade_in_enabled}, Duration: {fade_in_duration}min"
+            f"Fade-in: {fade_in_enabled}, Duration: {fade_in_duration}min, Days: {days}"
         )
 
         if not self._validate_time_format(time_str):
@@ -207,14 +209,18 @@ class Alarm:
             logger.error(f"Invalid time format for alarm: {time_str}")
             raise ValueError(error_msg)
 
+        # Parse and normalize days parameter
+        active_days = self._parse_days(days)
+        
         job = schedule.every().day.at(time_str).do(
-            self.play_playlist,
+            self._conditional_play_playlist,
             playlist_uri,
             spotify_api,
             volume,
             playlist_name,
             fade_in_enabled,
-            fade_in_duration
+            fade_in_duration,
+            active_days
         )
 
         alarm_info = {
@@ -224,12 +230,13 @@ class Alarm:
             'volume': volume,
             'fade_in_enabled': fade_in_enabled,
             'fade_in_duration': fade_in_duration,
+            'days': active_days,
             'job': job
         }
         
         with self._alarms_lock:
             self.alarms.append(alarm_info)
-            logger.info(f"Alarm successfully scheduled for {time_str}. Total alarms: {len(self.alarms)}")
+            logger.info(f"Alarm successfully scheduled for {time_str} on {self._format_days_display(active_days)}. Total alarms: {len(self.alarms)}")
 
         self._ensure_scheduler_running()
 
@@ -251,6 +258,111 @@ class Alarm:
             return 0 <= hours <= 23 and 0 <= minutes <= 59
         except (ValueError, AttributeError):
             return False
+
+    def _parse_days(self, days):
+        """
+        Parse days parameter into a list of weekday names.
+
+        Args:
+            days: List of weekday names, 'weekdays', 'weekends', or None.
+
+        Returns:
+            list: List of weekday names ('Monday', 'Tuesday', etc.) or None for all days.
+        """
+        if days is None:
+            return None
+        
+        if isinstance(days, str):
+            if days.lower() == 'weekdays':
+                return ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+            elif days.lower() == 'weekends':
+                return ['Saturday', 'Sunday']
+            else:
+                days = [days]
+        
+        # Normalize day names
+        day_mapping = {
+            'mon': 'Monday', 'monday': 'Monday',
+            'tue': 'Tuesday', 'tuesday': 'Tuesday',
+            'wed': 'Wednesday', 'wednesday': 'Wednesday',
+            'thu': 'Thursday', 'thursday': 'Thursday',
+            'fri': 'Friday', 'friday': 'Friday',
+            'sat': 'Saturday', 'saturday': 'Saturday',
+            'sun': 'Sunday', 'sunday': 'Sunday'
+        }
+        
+        normalized_days = []
+        for day in days:
+            day_lower = day.lower()
+            if day_lower in day_mapping:
+                normalized_days.append(day_mapping[day_lower])
+            else:
+                logger.warning(f"Unknown day name: {day}, ignoring")
+        
+        return normalized_days if normalized_days else None
+
+    def _format_days_display(self, days):
+        """
+        Format days list for display.
+
+        Args:
+            days: List of weekday names or None.
+
+        Returns:
+            str: Formatted string for display.
+        """
+        if days is None:
+            return 'Every day'
+        
+        if len(days) == 7:
+            return 'Every day'
+        
+        if set(days) == {'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'}:
+            return 'Weekdays'
+        
+        if set(days) == {'Saturday', 'Sunday'}:
+            return 'Weekends'
+        
+        # Abbreviate day names
+        abbrev = {
+            'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed',
+            'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat', 'Sunday': 'Sun'
+        }
+        
+        return ', '.join([abbrev.get(day, day) for day in days])
+
+    def _conditional_play_playlist(self, playlist_uri, spotify_api, volume, playlist_name,
+                                    fade_in_enabled, fade_in_duration, active_days):
+        """
+        Conditionally play playlist based on active days.
+
+        Checks if today is in the active days list before playing.
+
+        Args:
+            playlist_uri: Spotify URI of playlist to play.
+            spotify_api: SpotifyAPI instance for control.
+            volume: Volume level 0-100.
+            playlist_name: Name of playlist for notifications.
+            fade_in_enabled: Whether to enable gradual volume fade-in.
+            fade_in_duration: Fade-in duration in minutes.
+            active_days: List of weekday names or None for all days.
+        """
+        # If no specific days set, play every day
+        if active_days is None:
+            self.play_playlist(playlist_uri, spotify_api, volume, playlist_name,
+                             fade_in_enabled, fade_in_duration)
+            return
+        
+        # Check if today is in active days
+        from datetime import datetime
+        today_name = datetime.now().strftime('%A')
+        
+        if today_name in active_days:
+            logger.info(f"Today ({today_name}) is in active days {active_days}, playing alarm")
+            self.play_playlist(playlist_uri, spotify_api, volume, playlist_name,
+                             fade_in_enabled, fade_in_duration)
+        else:
+            logger.info(f"Today ({today_name}) is not in active days {active_days}, skipping alarm")
 
     def _ensure_scheduler_running(self):
         """Start the scheduler background thread if not already running."""
@@ -547,6 +659,7 @@ class Alarm:
                 - volume: Volume percentage
                 - fade_in_enabled: Whether fade-in is enabled
                 - fade_in_duration: Fade-in duration in minutes
+                - days: List of active days or None for every day
         """
         with self._alarms_lock:
             alarm_list = [
@@ -556,7 +669,8 @@ class Alarm:
                     'playlist_uri': a['playlist_uri'],
                     'volume': a['volume'],
                     'fade_in_enabled': a.get('fade_in_enabled', False),
-                    'fade_in_duration': a.get('fade_in_duration', 10)
+                    'fade_in_duration': a.get('fade_in_duration', 10),
+                    'days': a.get('days')
                 }
                 for a in self.alarms
             ]

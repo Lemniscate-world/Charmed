@@ -980,23 +980,29 @@ class AlarmApp(QtWidgets.QMainWindow):
 
         logger.info(f'User setting alarm: time={time_str}, playlist={playlist_name}, volume={volume}%')
 
-        # Show alarm setup dialog with fade-in options
+        # Show alarm setup dialog with fade-in and day selection options
         dlg = AlarmSetupDialog(self, playlist_name, time_str, volume)
         if dlg.exec_() != QDialog.Accepted:
             return
         
         fade_in_enabled = dlg.fade_in_enabled
         fade_in_duration = dlg.fade_in_duration
+        selected_days = dlg.selected_days
 
         try:
             self.alarm.set_alarm(
                 time_str, playlist_name, playlist_uri, self.spotify_api, volume,
-                fade_in_enabled, fade_in_duration
+                fade_in_enabled, fade_in_duration, selected_days
             )
 
             message = f'Alarm scheduled for {time_str}\n\nPlaylist: {playlist_name}\nVolume: {volume}%'
             if fade_in_enabled:
                 message += f'\nFade-in: {fade_in_duration} minutes'
+            
+            # Display active days
+            days_display = self._format_days_display(selected_days)
+            message += f'\nActive days: {days_display}'
+            
             message += '\n\nMake sure a Spotify device is active when the alarm triggers.'
             QMessageBox.information(self, 'Alarm Set Successfully', message)
             logger.info('Alarm set successfully by user')
@@ -1019,6 +1025,36 @@ class AlarmApp(QtWidgets.QMainWindow):
             )
         
         self._update_alarm_preview()
+
+    def _format_days_display(self, days):
+        """
+        Format days list for display.
+
+        Args:
+            days: List of weekday names or None.
+
+        Returns:
+            str: Formatted string for display.
+        """
+        if days is None:
+            return 'Every day'
+        
+        if len(days) == 7:
+            return 'Every day'
+        
+        if set(days) == {'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'}:
+            return 'Weekdays'
+        
+        if set(days) == {'Saturday', 'Sunday'}:
+            return 'Weekends'
+        
+        # Abbreviate day names
+        abbrev = {
+            'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed',
+            'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat', 'Sunday': 'Sun'
+        }
+        
+        return ', '.join([abbrev.get(day, day) for day in days])
 
     def _validate_alarm_time(self, time_str):
         """
@@ -1289,9 +1325,10 @@ class SnoozeNotificationDialog(QDialog):
 
 class AlarmSetupDialog(QDialog):
     """
-    Dialog for configuring alarm settings including fade-in options.
+    Dialog for configuring alarm settings including fade-in options and day selection.
     
     Allows user to configure:
+    - Select specific days of the week for the alarm
     - Enable/disable gradual volume fade-in
     - Fade-in duration (5-30 minutes)
     """
@@ -1337,6 +1374,53 @@ class AlarmSetupDialog(QDialog):
         separator.setFrameShape(QFrame.HLine)
         separator.setFrameShadow(QFrame.Sunken)
         layout.addWidget(separator)
+        
+        # Days section
+        days_label = QLabel('Active Days')
+        days_label.setFont(QFont('Arial', 14, QFont.Bold))
+        layout.addWidget(days_label)
+        
+        # Quick select buttons
+        quick_select_layout = QHBoxLayout()
+        
+        btn_everyday = QPushButton('Every Day')
+        btn_everyday.clicked.connect(self._select_every_day)
+        quick_select_layout.addWidget(btn_everyday)
+        
+        btn_weekdays = QPushButton('Weekdays')
+        btn_weekdays.clicked.connect(self._select_weekdays)
+        quick_select_layout.addWidget(btn_weekdays)
+        
+        btn_weekends = QPushButton('Weekends')
+        btn_weekends.clicked.connect(self._select_weekends)
+        quick_select_layout.addWidget(btn_weekends)
+        
+        layout.addLayout(quick_select_layout)
+        
+        # Day checkboxes
+        days_widget = QWidget()
+        days_grid = QHBoxLayout(days_widget)
+        days_grid.setContentsMargins(0, 8, 0, 8)
+        days_grid.setSpacing(8)
+        
+        self.day_checkboxes = {}
+        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        day_abbrev = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        
+        for day, abbrev in zip(days, day_abbrev):
+            checkbox = QCheckBox(abbrev)
+            checkbox.setChecked(True)
+            checkbox.setToolTip(day)
+            self.day_checkboxes[day] = checkbox
+            days_grid.addWidget(checkbox)
+        
+        layout.addWidget(days_widget)
+        
+        # Separator
+        separator2 = QFrame()
+        separator2.setFrameShape(QFrame.HLine)
+        separator2.setFrameShadow(QFrame.Sunken)
+        layout.addWidget(separator2)
         
         # Fade-in section
         fade_in_label = QLabel('Volume Fade-In')
@@ -1393,11 +1477,28 @@ class AlarmSetupDialog(QDialog):
         
         btn_ok = QPushButton('Set Alarm')
         btn_ok.setDefault(True)
-        btn_ok.clicked.connect(self.accept)
+        btn_ok.clicked.connect(self._on_accept)
         btn_ok.setStyleSheet('background-color: #1DB954; color: white; padding: 8px 24px; font-weight: bold;')
         button_layout.addWidget(btn_ok)
         
         layout.addLayout(button_layout)
+    
+    def _select_every_day(self):
+        """Select all days."""
+        for checkbox in self.day_checkboxes.values():
+            checkbox.setChecked(True)
+    
+    def _select_weekdays(self):
+        """Select weekdays (Mon-Fri)."""
+        weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+        for day, checkbox in self.day_checkboxes.items():
+            checkbox.setChecked(day in weekdays)
+    
+    def _select_weekends(self):
+        """Select weekends (Sat-Sun)."""
+        weekends = ['Saturday', 'Sunday']
+        for day, checkbox in self.day_checkboxes.items():
+            checkbox.setChecked(day in weekends)
     
     def _on_fade_in_toggled(self, checked):
         """Handle fade-in checkbox toggle."""
@@ -1408,6 +1509,23 @@ class AlarmSetupDialog(QDialog):
         """Handle duration slider change."""
         self.duration_value_label.setText(f'{value} min')
         self.fade_in_duration = value
+    
+    def _on_accept(self):
+        """Handle OK button click - validate and collect selected days."""
+        selected = [day for day, checkbox in self.day_checkboxes.items() if checkbox.isChecked()]
+        
+        if not selected:
+            QMessageBox.warning(
+                self,
+                'No Days Selected',
+                'Please select at least one day for the alarm.'
+            )
+            return
+        
+        # Store selected days (None if all 7 days are selected)
+        self.selected_days = None if len(selected) == 7 else selected
+        
+        self.accept()
 
 
 class AlarmManagerDialog(QDialog):
@@ -1445,8 +1563,8 @@ class AlarmManagerDialog(QDialog):
         layout.addWidget(header)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(['Time', 'Playlist', 'Volume', 'Actions'])
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(['Time', 'Playlist', 'Volume', 'Days', 'Actions'])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -1501,9 +1619,14 @@ class AlarmManagerDialog(QDialog):
                 volume_text += f" (fade {alarm_info.get('fade_in_duration', 10)}min)"
             self.table.setItem(row, 2, QTableWidgetItem(volume_text))
 
+            # Display active days
+            days = alarm_info.get('days')
+            days_display = self._format_days_display_static(days)
+            self.table.setItem(row, 3, QTableWidgetItem(days_display))
+
             btn_delete = QPushButton('Delete')
             btn_delete.clicked.connect(lambda checked, r=row: self._delete_alarm(r))
-            self.table.setCellWidget(row, 3, btn_delete)
+            self.table.setCellWidget(row, 4, btn_delete)
 
         # Load snoozed alarms
         snoozed_alarms = self.alarm_manager.get_snoozed_alarms()
@@ -1516,6 +1639,36 @@ class AlarmManagerDialog(QDialog):
             self.snooze_table.setItem(row, 0, QTableWidgetItem(time_str))
             self.snooze_table.setItem(row, 1, QTableWidgetItem(snooze_info.get('original_playlist', 'Unknown')))
             self.snooze_table.setItem(row, 2, QTableWidgetItem(f"{snooze_info.get('snooze_duration', 0)} min"))
+
+    def _format_days_display_static(self, days):
+        """
+        Format days list for display (static helper).
+
+        Args:
+            days: List of weekday names or None.
+
+        Returns:
+            str: Formatted string for display.
+        """
+        if days is None:
+            return 'Every day'
+        
+        if len(days) == 7:
+            return 'Every day'
+        
+        if set(days) == {'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'}:
+            return 'Weekdays'
+        
+        if set(days) == {'Saturday', 'Sunday'}:
+            return 'Weekends'
+        
+        # Abbreviate day names
+        abbrev = {
+            'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed',
+            'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat', 'Sunday': 'Sun'
+        }
+        
+        return ', '.join([abbrev.get(day, day) for day in days])
 
     def _delete_alarm(self, row):
         """Delete the alarm at the specified row."""

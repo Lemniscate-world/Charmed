@@ -108,6 +108,46 @@ class TestSetAlarm:
         
         with pytest.raises(ValueError, match='Invalid time format'):
             alarm.set_alarm('invalid', 'Test', 'spotify:playlist:test', mock_api)
+    
+    def test_set_alarm_with_days_list(self):
+        """Setting an alarm with specific days should store them correctly."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm.set_alarm('08:00', 'Weekday Playlist', 'spotify:playlist:weekday', mock_api, 
+                       75, False, 10, ['Monday', 'Wednesday', 'Friday'])
+        
+        assert len(alarm.alarms) == 1
+        assert alarm.alarms[0]['days'] == ['Monday', 'Wednesday', 'Friday']
+    
+    def test_set_alarm_with_weekdays_shortcut(self):
+        """Setting an alarm with 'weekdays' should expand to Mon-Fri."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm.set_alarm('07:00', 'Weekdays', 'spotify:playlist:wd', mock_api, 
+                       80, False, 10, 'weekdays')
+        
+        assert alarm.alarms[0]['days'] == ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+    
+    def test_set_alarm_with_weekends_shortcut(self):
+        """Setting an alarm with 'weekends' should expand to Sat-Sun."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm.set_alarm('09:00', 'Weekends', 'spotify:playlist:we', mock_api, 
+                       85, False, 10, 'weekends')
+        
+        assert alarm.alarms[0]['days'] == ['Saturday', 'Sunday']
+    
+    def test_set_alarm_without_days(self):
+        """Setting an alarm without days should default to None (every day)."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm.set_alarm('10:00', 'Every Day', 'spotify:playlist:ed', mock_api)
+        
+        assert alarm.alarms[0]['days'] is None
 
 
 class TestGetAlarms:
@@ -132,7 +172,19 @@ class TestGetAlarms:
         assert 'playlist' in result[0]
         assert 'playlist_uri' in result[0]
         assert 'volume' in result[0]
+        assert 'days' in result[0]
         assert 'job' not in result[0]
+    
+    def test_get_alarms_includes_days(self):
+        """get_alarms should include days information."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm.set_alarm('12:00', 'Test', 'spotify:playlist:test789', mock_api, 
+                       80, False, 10, ['Monday', 'Friday'])
+        result = alarm.get_alarms()
+        
+        assert result[0]['days'] == ['Monday', 'Friday']
 
 
 class TestRemoveAlarm:
@@ -292,6 +344,117 @@ class TestErrorMessages:
         alarm = Alarm()
         msg = alarm._get_user_friendly_error('Rate limit exceeded', 'Test')
         assert 'Rate limit' in msg or 'rate' in msg.lower()
+
+
+class TestDayParsing:
+    """Tests for day parsing and formatting."""
+    
+    def test_parse_days_none(self):
+        """Parsing None should return None (every day)."""
+        alarm = Alarm()
+        result = alarm._parse_days(None)
+        assert result is None
+    
+    def test_parse_days_weekdays_string(self):
+        """Parsing 'weekdays' should return Mon-Fri list."""
+        alarm = Alarm()
+        result = alarm._parse_days('weekdays')
+        assert result == ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+    
+    def test_parse_days_weekends_string(self):
+        """Parsing 'weekends' should return Sat-Sun list."""
+        alarm = Alarm()
+        result = alarm._parse_days('weekends')
+        assert result == ['Saturday', 'Sunday']
+    
+    def test_parse_days_list(self):
+        """Parsing list of days should normalize them."""
+        alarm = Alarm()
+        result = alarm._parse_days(['monday', 'Wednesday', 'FRI'])
+        assert result == ['Monday', 'Wednesday', 'Friday']
+    
+    def test_parse_days_abbreviations(self):
+        """Parsing abbreviated day names should work."""
+        alarm = Alarm()
+        result = alarm._parse_days(['mon', 'wed', 'fri'])
+        assert result == ['Monday', 'Wednesday', 'Friday']
+    
+    def test_format_days_display_none(self):
+        """Formatting None should return 'Every day'."""
+        alarm = Alarm()
+        result = alarm._format_days_display(None)
+        assert result == 'Every day'
+    
+    def test_format_days_display_weekdays(self):
+        """Formatting Mon-Fri should return 'Weekdays'."""
+        alarm = Alarm()
+        result = alarm._format_days_display(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'])
+        assert result == 'Weekdays'
+    
+    def test_format_days_display_weekends(self):
+        """Formatting Sat-Sun should return 'Weekends'."""
+        alarm = Alarm()
+        result = alarm._format_days_display(['Saturday', 'Sunday'])
+        assert result == 'Weekends'
+    
+    def test_format_days_display_custom(self):
+        """Formatting custom days should return abbreviated list."""
+        alarm = Alarm()
+        result = alarm._format_days_display(['Monday', 'Wednesday', 'Friday'])
+        assert result == 'Mon, Wed, Fri'
+
+
+class TestConditionalPlayback:
+    """Tests for day-specific conditional playback."""
+    
+    def test_conditional_play_every_day(self):
+        """Should play on any day when days is None."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        # With days=None, should always play
+        alarm._conditional_play_playlist(
+            'spotify:playlist:test', mock_api, 80, 'Test', False, 10, None
+        )
+        
+        mock_api.play_playlist_by_uri.assert_called_once()
+    
+    def test_conditional_play_on_active_day(self):
+        """Should play when today is in active days."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        # Get today's actual day name
+        from datetime import datetime
+        today = datetime.now().strftime('%A')
+        
+        # Set active days to include today
+        alarm._conditional_play_playlist(
+            'spotify:playlist:test', mock_api, 80, 'Test', False, 10, 
+            [today]
+        )
+        
+        mock_api.play_playlist_by_uri.assert_called_once()
+    
+    def test_conditional_play_skip_inactive_day(self):
+        """Should skip when today is not in active days."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        # Get today's actual day name and create a list without it
+        from datetime import datetime
+        today = datetime.now().strftime('%A')
+        
+        # Create list of all days except today
+        all_days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        inactive_days = [day for day in all_days if day != today]
+        
+        alarm._conditional_play_playlist(
+            'spotify:playlist:test', mock_api, 80, 'Test', False, 10, 
+            inactive_days
+        )
+        
+        mock_api.play_playlist_by_uri.assert_not_called()
 
 
 class TestSnoozeAlarm:
