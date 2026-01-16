@@ -22,12 +22,14 @@ from datetime import datetime, timedelta
 import queue
 import tempfile
 from pathlib import Path
+import logging
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from alarm import Alarm, AlarmTemplate, TemplateManager
 from spotify_api.spotify_api import SpotifyAPI
+import logging_config
 
 
 class TestFullAlarmWorkflow:
@@ -955,6 +957,468 @@ class TestComplexPhase2Scenarios:
             assert evening_alarm['days'] is None
             
             alarm.shutdown()
+
+
+class TestLoggingSystem:
+    """Integration tests for logging system."""
+    
+    def setup_method(self):
+        """Reset logging configuration before each test."""
+        # Reset the global logging configured flag
+        logging_config._logging_configured = False
+        
+        # Clear all existing handlers from root logger
+        root_logger = logging.getLogger()
+        root_logger.handlers.clear()
+        root_logger.setLevel(logging.WARNING)
+    
+    def teardown_method(self):
+        """Clean up after each test."""
+        # Reset logging configuration
+        logging_config._logging_configured = False
+        
+        # Clear all handlers
+        root_logger = logging.getLogger()
+        root_logger.handlers.clear()
+    
+    def test_setup_logging_creates_rotating_file_handlers(self, tmp_path):
+        """Test that setup_logging creates rotating file handlers."""
+        # Override LOG_DIR for testing
+        original_log_dir = logging_config.LOG_DIR
+        logging_config.LOG_DIR = tmp_path
+        
+        try:
+            # Setup logging
+            logging_config.setup_logging(log_level=logging.INFO)
+            
+            # Get root logger
+            root_logger = logging.getLogger()
+            
+            # Verify handlers exist
+            assert len(root_logger.handlers) == 2
+            
+            # Find file handler
+            file_handler = None
+            console_handler = None
+            
+            for handler in root_logger.handlers:
+                if isinstance(handler, logging.handlers.RotatingFileHandler):
+                    file_handler = handler
+                elif isinstance(handler, logging.StreamHandler):
+                    console_handler = handler
+            
+            # Verify both handlers exist
+            assert file_handler is not None
+            assert console_handler is not None
+            
+            # Verify file handler is rotating
+            assert isinstance(file_handler, logging.handlers.RotatingFileHandler)
+            assert file_handler.maxBytes == 5 * 1024 * 1024  # 5MB
+            assert file_handler.backupCount == 5
+            
+        finally:
+            # Restore original LOG_DIR
+            logging_config.LOG_DIR = original_log_dir
+    
+    def test_logs_written_to_timestamped_files(self, tmp_path):
+        """Test that logs are written to timestamped files."""
+        # Override LOG_DIR for testing
+        original_log_dir = logging_config.LOG_DIR
+        logging_config.LOG_DIR = tmp_path
+        
+        try:
+            # Setup logging
+            logging_config.setup_logging(log_level=logging.DEBUG)
+            
+            # Get logger and write test message
+            logger = logging_config.get_logger('test_module')
+            logger.info('Test log message')
+            
+            # Verify log file exists with timestamped name
+            log_files = list(tmp_path.glob('alarmify_*.log'))
+            assert len(log_files) == 1
+            
+            # Verify filename format (alarmify_YYYYMMDD_HHMMSS.log)
+            log_file = log_files[0]
+            assert log_file.name.startswith('alarmify_')
+            assert log_file.name.endswith('.log')
+            
+            # Verify timestamp format in filename
+            filename_parts = log_file.stem.split('_')
+            assert len(filename_parts) == 3  # ['alarmify', 'YYYYMMDD', 'HHMMSS']
+            assert len(filename_parts[1]) == 8  # YYYYMMDD
+            assert len(filename_parts[2]) == 6  # HHMMSS
+            
+            # Verify log content
+            with open(log_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+                assert 'Test log message' in content
+                assert 'test_module' in content
+            
+        finally:
+            # Restore original LOG_DIR
+            logging_config.LOG_DIR = original_log_dir
+    
+    def test_different_log_levels_captured_correctly(self, tmp_path):
+        """Test that different log levels are captured correctly."""
+        # Override LOG_DIR for testing
+        original_log_dir = logging_config.LOG_DIR
+        logging_config.LOG_DIR = tmp_path
+        
+        try:
+            # Setup logging with DEBUG level
+            logging_config.setup_logging(log_level=logging.DEBUG)
+            
+            # Get logger
+            logger = logging_config.get_logger('test_levels')
+            
+            # Write messages at different levels
+            logger.debug('Debug message')
+            logger.info('Info message')
+            logger.warning('Warning message')
+            logger.error('Error message')
+            
+            # Get log file
+            log_files = list(tmp_path.glob('alarmify_*.log'))
+            assert len(log_files) == 1
+            
+            # Read log content
+            with open(log_files[0], 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Verify all log levels are present
+            assert '[DEBUG]' in content
+            assert 'Debug message' in content
+            
+            assert '[INFO]' in content
+            assert 'Info message' in content
+            
+            assert '[WARNING]' in content
+            assert 'Warning message' in content
+            
+            assert '[ERROR]' in content
+            assert 'Error message' in content
+            
+            # Verify logger name is included
+            assert 'test_levels' in content
+            
+        finally:
+            # Restore original LOG_DIR
+            logging_config.LOG_DIR = original_log_dir
+    
+    def test_log_level_filtering(self, tmp_path):
+        """Test that log level filtering works correctly."""
+        # Override LOG_DIR for testing
+        original_log_dir = logging_config.LOG_DIR
+        logging_config.LOG_DIR = tmp_path
+        
+        try:
+            # Setup logging with WARNING level
+            logging_config.setup_logging(log_level=logging.WARNING)
+            
+            # Get logger
+            logger = logging_config.get_logger('test_filter')
+            
+            # Write messages at different levels
+            logger.debug('Debug message - should not appear')
+            logger.info('Info message - should not appear')
+            logger.warning('Warning message - should appear')
+            logger.error('Error message - should appear')
+            
+            # Get log file
+            log_files = list(tmp_path.glob('alarmify_*.log'))
+            assert len(log_files) == 1
+            
+            # Read log content
+            with open(log_files[0], 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Verify DEBUG and INFO are not present
+            assert 'Debug message - should not appear' not in content
+            assert 'Info message - should not appear' not in content
+            
+            # Verify WARNING and ERROR are present
+            assert 'Warning message - should appear' in content
+            assert 'Error message - should appear' in content
+            
+        finally:
+            # Restore original LOG_DIR
+            logging_config.LOG_DIR = original_log_dir
+    
+    def test_get_log_files_utility(self, tmp_path):
+        """Test get_log_files() utility function."""
+        # Override LOG_DIR for testing
+        original_log_dir = logging_config.LOG_DIR
+        logging_config.LOG_DIR = tmp_path
+        
+        try:
+            # Create multiple log files with different timestamps
+            log_file_1 = tmp_path / 'alarmify_20240101_120000.log'
+            log_file_2 = tmp_path / 'alarmify_20240102_120000.log'
+            log_file_3 = tmp_path / 'alarmify_20240103_120000.log'
+            
+            # Create files with slight delay to ensure different modification times
+            log_file_1.write_text('Log 1')
+            time.sleep(0.01)
+            log_file_2.write_text('Log 2')
+            time.sleep(0.01)
+            log_file_3.write_text('Log 3')
+            
+            # Get log files
+            log_files = logging_config.get_log_files()
+            
+            # Verify all files are returned
+            assert len(log_files) == 3
+            
+            # Verify files are sorted by modification time (newest first)
+            assert log_files[0] == log_file_3
+            assert log_files[1] == log_file_2
+            assert log_files[2] == log_file_1
+            
+            # Verify they are Path objects
+            for log_file in log_files:
+                assert isinstance(log_file, Path)
+            
+        finally:
+            # Restore original LOG_DIR
+            logging_config.LOG_DIR = original_log_dir
+    
+    def test_get_log_files_with_rotation(self, tmp_path):
+        """Test get_log_files() includes rotated files."""
+        # Override LOG_DIR for testing
+        original_log_dir = logging_config.LOG_DIR
+        logging_config.LOG_DIR = tmp_path
+        
+        try:
+            # Create log files including rotated ones
+            log_file_1 = tmp_path / 'alarmify_20240101_120000.log'
+            log_file_2 = tmp_path / 'alarmify_20240101_120000.log.1'
+            log_file_3 = tmp_path / 'alarmify_20240101_120000.log.2'
+            
+            log_file_1.write_text('Current log')
+            log_file_2.write_text('Rotated log 1')
+            log_file_3.write_text('Rotated log 2')
+            
+            # Get log files
+            log_files = logging_config.get_log_files()
+            
+            # Verify all files are returned (including rotated)
+            assert len(log_files) == 3
+            
+            # Verify file names
+            file_names = [f.name for f in log_files]
+            assert 'alarmify_20240101_120000.log' in file_names
+            assert 'alarmify_20240101_120000.log.1' in file_names
+            assert 'alarmify_20240101_120000.log.2' in file_names
+            
+        finally:
+            # Restore original LOG_DIR
+            logging_config.LOG_DIR = original_log_dir
+    
+    def test_get_log_files_empty_directory(self, tmp_path):
+        """Test get_log_files() with empty directory."""
+        # Override LOG_DIR for testing
+        original_log_dir = logging_config.LOG_DIR
+        logging_config.LOG_DIR = tmp_path
+        
+        try:
+            # Get log files from empty directory
+            log_files = logging_config.get_log_files()
+            
+            # Verify empty list is returned
+            assert log_files == []
+            
+        finally:
+            # Restore original LOG_DIR
+            logging_config.LOG_DIR = original_log_dir
+    
+    def test_read_log_file_utility(self, tmp_path):
+        """Test read_log_file() utility function."""
+        # Create test log file
+        log_file = tmp_path / 'test.log'
+        test_content = '\n'.join([f'Line {i}' for i in range(1, 11)])
+        log_file.write_text(test_content, encoding='utf-8')
+        
+        # Read entire file
+        content = logging_config.read_log_file(log_file)
+        
+        # Verify content
+        assert 'Line 1' in content
+        assert 'Line 10' in content
+        assert content.count('\n') == 9  # 10 lines = 9 newlines
+    
+    def test_read_log_file_with_max_lines(self, tmp_path):
+        """Test read_log_file() with max_lines parameter."""
+        # Create test log file with many lines
+        log_file = tmp_path / 'test.log'
+        test_content = '\n'.join([f'Line number {i}' for i in range(1, 101)])  # 100 lines
+        log_file.write_text(test_content, encoding='utf-8')
+        
+        # Read last 10 lines
+        content = logging_config.read_log_file(log_file, max_lines=10)
+        
+        # Verify only last 10 lines are returned
+        lines = content.strip().split('\n')
+        assert len(lines) == 10
+        
+        # Verify the lines are 91-100
+        assert lines[0] == 'Line number 91'
+        assert lines[-1] == 'Line number 100'
+        
+        # Verify early lines are not included
+        assert 'Line number 1\n' not in content
+        assert 'Line number 90\n' not in content
+    
+    def test_read_log_file_handles_errors(self, tmp_path):
+        """Test read_log_file() handles errors gracefully."""
+        # Try to read non-existent file
+        non_existent = tmp_path / 'does_not_exist.log'
+        
+        content = logging_config.read_log_file(non_existent)
+        
+        # Verify error message is returned
+        assert 'Error reading log file' in content
+    
+    def test_get_current_log_file(self, tmp_path):
+        """Test get_current_log_file() returns newest log."""
+        # Override LOG_DIR for testing
+        original_log_dir = logging_config.LOG_DIR
+        logging_config.LOG_DIR = tmp_path
+        
+        try:
+            # Create multiple log files
+            log_file_1 = tmp_path / 'alarmify_20240101_120000.log'
+            log_file_2 = tmp_path / 'alarmify_20240102_120000.log'
+            log_file_3 = tmp_path / 'alarmify_20240103_120000.log'
+            
+            log_file_1.write_text('Log 1')
+            time.sleep(0.01)
+            log_file_2.write_text('Log 2')
+            time.sleep(0.01)
+            log_file_3.write_text('Log 3')
+            
+            # Get current log file
+            current = logging_config.get_current_log_file()
+            
+            # Verify it's the newest file
+            assert current == log_file_3
+            
+        finally:
+            # Restore original LOG_DIR
+            logging_config.LOG_DIR = original_log_dir
+    
+    def test_logging_format_includes_timestamp_and_level(self, tmp_path):
+        """Test that log format includes timestamp, level, module, and message."""
+        # Override LOG_DIR for testing
+        original_log_dir = logging_config.LOG_DIR
+        logging_config.LOG_DIR = tmp_path
+        
+        try:
+            # Setup logging
+            logging_config.setup_logging(log_level=logging.INFO)
+            
+            # Get logger and write message
+            logger = logging_config.get_logger('test_format')
+            logger.info('Test message')
+            
+            # Read log file
+            log_files = list(tmp_path.glob('alarmify_*.log'))
+            with open(log_files[0], 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            # Verify format components are present
+            # Expected format: YYYY-MM-DD HH:MM:SS [LEVEL] module: message
+            lines = [line for line in content.split('\n') if 'Test message' in line]
+            assert len(lines) == 1
+            
+            log_line = lines[0]
+            
+            # Check for timestamp (YYYY-MM-DD HH:MM:SS)
+            import re
+            timestamp_pattern = r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}'
+            assert re.search(timestamp_pattern, log_line)
+            
+            # Check for log level [INFO]
+            assert '[INFO]' in log_line
+            
+            # Check for module name
+            assert 'test_format' in log_line
+            
+            # Check for message
+            assert 'Test message' in log_line
+            
+        finally:
+            # Restore original LOG_DIR
+            logging_config.LOG_DIR = original_log_dir
+    
+    def test_multiple_loggers_same_file(self, tmp_path):
+        """Test that multiple loggers write to the same file."""
+        # Override LOG_DIR for testing
+        original_log_dir = logging_config.LOG_DIR
+        logging_config.LOG_DIR = tmp_path
+        
+        try:
+            # Setup logging
+            logging_config.setup_logging(log_level=logging.INFO)
+            
+            # Get multiple loggers
+            logger1 = logging_config.get_logger('module1')
+            logger2 = logging_config.get_logger('module2')
+            logger3 = logging_config.get_logger('module3')
+            
+            # Write from different loggers
+            logger1.info('Message from module1')
+            logger2.info('Message from module2')
+            logger3.info('Message from module3')
+            
+            # Verify all messages are in the same file
+            log_files = list(tmp_path.glob('alarmify_*.log'))
+            assert len(log_files) == 1
+            
+            with open(log_files[0], 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            assert 'Message from module1' in content
+            assert 'module1' in content
+            
+            assert 'Message from module2' in content
+            assert 'module2' in content
+            
+            assert 'Message from module3' in content
+            assert 'module3' in content
+            
+        finally:
+            # Restore original LOG_DIR
+            logging_config.LOG_DIR = original_log_dir
+    
+    def test_setup_logging_idempotent(self, tmp_path):
+        """Test that calling setup_logging multiple times is safe."""
+        # Override LOG_DIR for testing
+        original_log_dir = logging_config.LOG_DIR
+        logging_config.LOG_DIR = tmp_path
+        
+        try:
+            # Call setup_logging multiple times
+            logging_config.setup_logging(log_level=logging.INFO)
+            logging_config.setup_logging(log_level=logging.DEBUG)
+            logging_config.setup_logging(log_level=logging.WARNING)
+            
+            # Get logger and write message
+            logger = logging_config.get_logger('test_idempotent')
+            logger.info('Test message')
+            
+            # Verify only one log file was created
+            log_files = list(tmp_path.glob('alarmify_*.log'))
+            assert len(log_files) == 1
+            
+            # Verify message was logged
+            with open(log_files[0], 'r', encoding='utf-8') as f:
+                content = f.read()
+            assert 'Test message' in content
+            
+        finally:
+            # Restore original LOG_DIR
+            logging_config.LOG_DIR = original_log_dir
 
 
 if __name__ == '__main__':
