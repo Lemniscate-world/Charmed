@@ -10,6 +10,8 @@ Tests cover:
 - Time validation
 - Error handling and retry logic
 - User-friendly error messages
+- Snooze functionality (snooze_alarm, get_snoozed_alarms)
+- Shutdown with snoozed alarms
 
 Run with: python -m pytest tests/test_alarm.py -v
 """
@@ -31,6 +33,7 @@ class TestAlarmInit:
         """Alarm should initialize with empty alarm list."""
         alarm = Alarm()
         assert alarm.alarms == []
+        assert alarm.snoozed_alarms == []
         assert alarm.scheduler_running is False
     
     def test_alarm_init_no_thread(self):
@@ -289,3 +292,172 @@ class TestErrorMessages:
         alarm = Alarm()
         msg = alarm._get_user_friendly_error('Rate limit exceeded', 'Test')
         assert 'Rate limit' in msg or 'rate' in msg.lower()
+
+
+class TestSnoozeAlarm:
+    """Tests for snooze_alarm method."""
+    
+    def test_snooze_alarm_creates_scheduled_job(self):
+        """Snoozing should create a scheduled job."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm_data = {
+            'playlist_uri': 'spotify:playlist:test123',
+            'playlist_name': 'Morning Playlist',
+            'volume': 75,
+            'fade_in_enabled': False,
+            'fade_in_duration': 10,
+            'spotify_api': mock_api
+        }
+        
+        alarm.snooze_alarm(alarm_data, snooze_minutes=5)
+        
+        assert len(alarm.snoozed_alarms) == 1
+        assert alarm.snoozed_alarms[0]['original_playlist'] == 'Morning Playlist'
+        assert alarm.snoozed_alarms[0]['snooze_duration'] == 5
+    
+    def test_snooze_alarm_starts_scheduler(self):
+        """Snoozing should start scheduler if not running."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm_data = {
+            'playlist_uri': 'spotify:playlist:test456',
+            'playlist_name': 'Test',
+            'volume': 80,
+            'fade_in_enabled': False,
+            'fade_in_duration': 10,
+            'spotify_api': mock_api
+        }
+        
+        alarm.snooze_alarm(alarm_data, snooze_minutes=10)
+        
+        assert alarm.scheduler_running is True
+        assert alarm.scheduler_thread is not None
+    
+    def test_snooze_alarm_multiple_snoozes(self):
+        """Should be able to snooze multiple alarms."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm_data_1 = {
+            'playlist_uri': 'spotify:playlist:a',
+            'playlist_name': 'Playlist A',
+            'volume': 70,
+            'fade_in_enabled': False,
+            'fade_in_duration': 10,
+            'spotify_api': mock_api
+        }
+        
+        alarm_data_2 = {
+            'playlist_uri': 'spotify:playlist:b',
+            'playlist_name': 'Playlist B',
+            'volume': 80,
+            'fade_in_enabled': True,
+            'fade_in_duration': 15,
+            'spotify_api': mock_api
+        }
+        
+        alarm.snooze_alarm(alarm_data_1, snooze_minutes=5)
+        alarm.snooze_alarm(alarm_data_2, snooze_minutes=10)
+        
+        assert len(alarm.snoozed_alarms) == 2
+    
+    def test_snooze_alarm_default_duration(self):
+        """Default snooze duration should be 5 minutes."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm_data = {
+            'playlist_uri': 'spotify:playlist:default',
+            'playlist_name': 'Default Test',
+            'volume': 80,
+            'fade_in_enabled': False,
+            'fade_in_duration': 10,
+            'spotify_api': mock_api
+        }
+        
+        alarm.snooze_alarm(alarm_data)
+        
+        assert alarm.snoozed_alarms[0]['snooze_duration'] == 5
+
+
+class TestGetSnoozedAlarms:
+    """Tests for get_snoozed_alarms method."""
+    
+    def test_get_snoozed_alarms_empty(self):
+        """Should return empty list when no alarms snoozed."""
+        alarm = Alarm()
+        result = alarm.get_snoozed_alarms()
+        assert result == []
+    
+    def test_get_snoozed_alarms_returns_info(self):
+        """Should return snoozed alarm information."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm_data = {
+            'playlist_uri': 'spotify:playlist:test',
+            'playlist_name': 'Snoozed Playlist',
+            'volume': 85,
+            'fade_in_enabled': False,
+            'fade_in_duration': 10,
+            'spotify_api': mock_api
+        }
+        
+        alarm.snooze_alarm(alarm_data, snooze_minutes=15)
+        result = alarm.get_snoozed_alarms()
+        
+        assert len(result) == 1
+        assert result[0]['original_playlist'] == 'Snoozed Playlist'
+        assert result[0]['snooze_duration'] == 15
+        assert 'snooze_time' in result[0]
+    
+    def test_get_snoozed_alarms_excludes_job(self):
+        """Returned info should not include internal 'job' key."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm_data = {
+            'playlist_uri': 'spotify:playlist:nojob',
+            'playlist_name': 'No Job',
+            'volume': 80,
+            'fade_in_enabled': False,
+            'fade_in_duration': 10,
+            'spotify_api': mock_api
+        }
+        
+        alarm.snooze_alarm(alarm_data, snooze_minutes=5)
+        result = alarm.get_snoozed_alarms()
+        
+        assert 'job' not in result[0]
+
+
+class TestShutdownWithSnooze:
+    """Tests for shutdown method with snoozed alarms."""
+    
+    def test_shutdown_clears_snoozed_alarms(self):
+        """Shutdown should clear snoozed alarms."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        # Add regular alarm
+        alarm.set_alarm('08:00', 'Morning', 'spotify:playlist:morning', mock_api)
+        
+        # Add snoozed alarm
+        alarm_data = {
+            'playlist_uri': 'spotify:playlist:snooze',
+            'playlist_name': 'Snoozed',
+            'volume': 80,
+            'fade_in_enabled': False,
+            'fade_in_duration': 10,
+            'spotify_api': mock_api
+        }
+        alarm.snooze_alarm(alarm_data, snooze_minutes=5)
+        
+        alarm.shutdown()
+        
+        assert len(alarm.alarms) == 0
+        assert len(alarm.snoozed_alarms) == 0
+        assert alarm.scheduler_running is False

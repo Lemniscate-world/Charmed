@@ -598,6 +598,26 @@ class AlarmApp(QtWidgets.QMainWindow):
         """
         if hasattr(self, 'tray_icon') and self.tray_icon:
             self.tray_icon.showMessage(title, message, icon_type, 5000)
+    
+    def show_snooze_notification(self, title, message, alarm_data, icon_type=QSystemTrayIcon.Information):
+        """
+        Show a snooze notification dialog when alarm triggers.
+        
+        Args:
+            title: Notification title.
+            message: Notification message.
+            alarm_data: Alarm data dictionary for snooze functionality.
+            icon_type: QSystemTrayIcon icon type.
+        """
+        logger.info('Showing snooze notification dialog')
+        dlg = SnoozeNotificationDialog(self, title, message, alarm_data)
+        dlg.show()
+        dlg.raise_()
+        dlg.activateWindow()
+        
+        # Also show tray notification
+        if hasattr(self, 'tray_icon') and self.tray_icon:
+            self.tray_icon.showMessage(title, message, icon_type, 5000)
 
     def _show_window(self):
         """Show and activate the main window."""
@@ -1334,6 +1354,178 @@ class AlarmApp(QtWidgets.QMainWindow):
             self.tray_icon.hide()
 
 
+class SnoozeNotificationDialog(QDialog):
+    """
+    Dialog shown when an alarm triggers, offering snooze options.
+    
+    Displays alarm information and provides buttons for:
+    - Snooze 5 minutes
+    - Snooze 10 minutes
+    - Snooze 15 minutes
+    - Dismiss alarm
+    """
+    
+    def __init__(self, parent=None, title='', message='', alarm_data=None):
+        """
+        Initialize the snooze notification dialog.
+        
+        Args:
+            parent: Parent widget (AlarmApp).
+            title: Notification title.
+            message: Notification message.
+            alarm_data: Alarm data dictionary for snooze functionality.
+        """
+        super().__init__(parent)
+        self.parent_app = parent
+        self.alarm_data = alarm_data or {}
+        
+        self.setWindowTitle(title)
+        self.setMinimumWidth(450)
+        self.setModal(False)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        
+        self._build_ui(title, message)
+    
+    def _build_ui(self, title, message):
+        """Build the dialog UI."""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(20)
+        layout.setContentsMargins(24, 24, 24, 24)
+        
+        # Icon
+        icon_label = QLabel('⏰')
+        icon_label.setFont(QFont('Arial', 48))
+        icon_label.setAlignment(Qt.AlignCenter)
+        icon_label.setStyleSheet('color: #1DB954;')
+        layout.addWidget(icon_label)
+        
+        # Title
+        title_label = QLabel(title)
+        title_label.setFont(QFont('Inter', 18, QFont.Bold))
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet('color: #ffffff;')
+        layout.addWidget(title_label)
+        
+        # Message
+        message_label = QLabel(message)
+        message_label.setFont(QFont('Inter', 12))
+        message_label.setAlignment(Qt.AlignCenter)
+        message_label.setWordWrap(True)
+        message_label.setStyleSheet('color: #b3b3b3; padding: 10px;')
+        layout.addWidget(message_label)
+        
+        # Separator
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        separator.setStyleSheet('background-color: #3a3a3a;')
+        layout.addWidget(separator)
+        
+        # Snooze label
+        snooze_label = QLabel('Snooze for:')
+        snooze_label.setFont(QFont('Inter', 14, QFont.Bold))
+        snooze_label.setStyleSheet('color: #ffffff;')
+        layout.addWidget(snooze_label)
+        
+        # Snooze buttons
+        snooze_button_layout = QHBoxLayout()
+        snooze_button_layout.setSpacing(12)
+        
+        btn_5min = QPushButton('5 min')
+        btn_5min.setMinimumHeight(50)
+        btn_5min.setFont(QFont('Inter', 14, QFont.Bold))
+        btn_5min.clicked.connect(lambda: self._snooze(5))
+        btn_5min.setStyleSheet("""
+            QPushButton {
+                background-color: #1DB954;
+                color: #000000;
+                border: none;
+                border-radius: 8px;
+                padding: 12px;
+            }
+            QPushButton:hover {
+                background-color: #1ed760;
+            }
+        """)
+        snooze_button_layout.addWidget(btn_5min)
+        
+        btn_10min = QPushButton('10 min')
+        btn_10min.setMinimumHeight(50)
+        btn_10min.setFont(QFont('Inter', 14, QFont.Bold))
+        btn_10min.clicked.connect(lambda: self._snooze(10))
+        btn_10min.setStyleSheet("""
+            QPushButton {
+                background-color: #1DB954;
+                color: #000000;
+                border: none;
+                border-radius: 8px;
+                padding: 12px;
+            }
+            QPushButton:hover {
+                background-color: #1ed760;
+            }
+        """)
+        snooze_button_layout.addWidget(btn_10min)
+        
+        btn_15min = QPushButton('15 min')
+        btn_15min.setMinimumHeight(50)
+        btn_15min.setFont(QFont('Inter', 14, QFont.Bold))
+        btn_15min.clicked.connect(lambda: self._snooze(15))
+        btn_15min.setStyleSheet("""
+            QPushButton {
+                background-color: #1DB954;
+                color: #000000;
+                border: none;
+                border-radius: 8px;
+                padding: 12px;
+            }
+            QPushButton:hover {
+                background-color: #1ed760;
+            }
+        """)
+        snooze_button_layout.addWidget(btn_15min)
+        
+        layout.addLayout(snooze_button_layout)
+        
+        # Dismiss button
+        btn_dismiss = QPushButton('Dismiss')
+        btn_dismiss.setMinimumHeight(50)
+        btn_dismiss.setFont(QFont('Inter', 14))
+        btn_dismiss.clicked.connect(self.accept)
+        btn_dismiss.setStyleSheet("""
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #ffffff;
+                border: 2px solid #5a5a5a;
+                border-radius: 8px;
+                padding: 12px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+                border: 2px solid #6a6a6a;
+            }
+        """)
+        layout.addWidget(btn_dismiss)
+    
+    def _snooze(self, minutes):
+        """
+        Snooze the alarm for the specified duration.
+        
+        Args:
+            minutes: Number of minutes to snooze.
+        """
+        logger.info(f'User snoozed alarm for {minutes} minutes')
+        
+        if self.parent_app and hasattr(self.parent_app, 'alarm'):
+            self.parent_app.alarm.snooze_alarm(self.alarm_data, minutes)
+            
+            snooze_msg = f'Alarm snoozed for {minutes} minutes'
+            QMessageBox.information(self, 'Snoozed', snooze_msg)
+            logger.info(f'Alarm successfully snoozed for {minutes} minutes')
+        
+        self.accept()
+
+
 class AlarmSetupDialog(QDialog):
     """
     Dialog for configuring alarm settings including fade-in options.
@@ -1459,9 +1651,9 @@ class AlarmSetupDialog(QDialog):
 
 class AlarmManagerDialog(QDialog):
     """
-    Dialog to view and manage scheduled alarms.
+    Dialog to view and manage scheduled alarms and snoozed alarms.
 
-    Shows a table of all active alarms with time, playlist, and volume.
+    Shows tables of all active alarms and snoozed alarms with time, playlist, and volume.
     Allows deleting individual alarms.
     """
 
@@ -1476,7 +1668,7 @@ class AlarmManagerDialog(QDialog):
         super().__init__(parent)
         self.alarm_manager = alarm_manager
         self.setWindowTitle('Manage Alarms')
-        self.setMinimumSize(500, 300)
+        self.setMinimumSize(600, 500)
         self.setModal(True)
 
         self._build_ui()
@@ -1486,6 +1678,7 @@ class AlarmManagerDialog(QDialog):
         """Build the dialog UI."""
         layout = QVBoxLayout(self)
 
+        # Regular alarms section
         header = QLabel('Scheduled Alarms')
         header.setFont(QFont('Arial', 14, QFont.Bold))
         layout.addWidget(header)
@@ -1498,12 +1691,43 @@ class AlarmManagerDialog(QDialog):
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         layout.addWidget(self.table)
 
+        # Separator
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        layout.addWidget(separator)
+
+        # Snoozed alarms section
+        snooze_header = QLabel('Snoozed Alarms')
+        snooze_header.setFont(QFont('Arial', 14, QFont.Bold))
+        layout.addWidget(snooze_header)
+
+        self.snooze_table = QTableWidget()
+        self.snooze_table.setColumnCount(3)
+        self.snooze_table.setHorizontalHeaderLabels(['Will Trigger At', 'Playlist', 'Snooze Duration'])
+        self.snooze_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.snooze_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.snooze_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        layout.addWidget(self.snooze_table)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        btn_refresh = QPushButton('Refresh')
+        btn_refresh.clicked.connect(self._load_alarms)
+        button_layout.addWidget(btn_refresh)
+        
+        button_layout.addStretch()
+        
         btn_close = QPushButton('Close')
         btn_close.clicked.connect(self.accept)
-        layout.addWidget(btn_close)
+        button_layout.addWidget(btn_close)
+        
+        layout.addLayout(button_layout)
 
     def _load_alarms(self):
-        """Load and display all scheduled alarms."""
+        """Load and display all scheduled alarms and snoozed alarms."""
+        # Load regular alarms
         alarms = self.alarm_manager.get_alarms()
         self.table.setRowCount(len(alarms))
 
@@ -1519,6 +1743,18 @@ class AlarmManagerDialog(QDialog):
             btn_delete = QPushButton('Delete')
             btn_delete.clicked.connect(lambda checked, r=row: self._delete_alarm(r))
             self.table.setCellWidget(row, 3, btn_delete)
+
+        # Load snoozed alarms
+        snoozed_alarms = self.alarm_manager.get_snoozed_alarms()
+        self.snooze_table.setRowCount(len(snoozed_alarms))
+
+        for row, snooze_info in enumerate(snoozed_alarms):
+            snooze_time = snooze_info.get('snooze_time')
+            time_str = snooze_time.strftime('%H:%M:%S') if snooze_time else 'Unknown'
+            
+            self.snooze_table.setItem(row, 0, QTableWidgetItem(time_str))
+            self.snooze_table.setItem(row, 1, QTableWidgetItem(snooze_info.get('original_playlist', 'Unknown')))
+            self.snooze_table.setItem(row, 2, QTableWidgetItem(f"{snooze_info.get('snooze_duration', 0)} min"))
 
     def _delete_alarm(self, row):
         """Delete the alarm at the specified row."""

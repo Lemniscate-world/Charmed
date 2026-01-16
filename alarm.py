@@ -168,6 +168,7 @@ class Alarm:
         """
         logger.info('Initializing Alarm manager')
         self.alarms = []
+        self.snoozed_alarms = []
         self.scheduler_running = False
         self.scheduler_thread = None
         self._alarms_lock = threading.Lock()
@@ -326,7 +327,18 @@ class Alarm:
                 success_msg = f'Alarm triggered successfully!\nPlaying: {playlist_name}'
                 if fade_in_enabled:
                     success_msg += f'\nVolume fading in over {fade_in_duration} minutes'
-                self._show_notification('Alarm Success', success_msg, success=True)
+                
+                # Prepare alarm data for snooze functionality
+                alarm_data = {
+                    'playlist_uri': playlist_uri,
+                    'playlist_name': playlist_name,
+                    'volume': volume,
+                    'fade_in_enabled': fade_in_enabled,
+                    'fade_in_duration': fade_in_duration,
+                    'spotify_api': spotify_api
+                }
+                
+                self._show_notification('Alarm Success', success_msg, success=True, alarm_data=alarm_data)
                 logger.info(f"Successfully started playlist playback: {playlist_name}")
                 return
 
@@ -500,7 +512,7 @@ class Alarm:
                 'Check your Spotify connection and device status.'
             )
 
-    def _show_notification(self, title, message, success=True):
+    def _show_notification(self, title, message, success=True, alarm_data=None):
         """
         Show system tray notification.
 
@@ -508,12 +520,18 @@ class Alarm:
             title: Notification title.
             message: Notification message.
             success: Whether this is a success (True) or failure (False) notification.
+            alarm_data: Optional alarm data dict for snooze functionality.
         """
         if self.gui_app and hasattr(self.gui_app, 'show_tray_notification'):
             try:
                 from PyQt5.QtWidgets import QSystemTrayIcon
                 icon_type = QSystemTrayIcon.Information if success else QSystemTrayIcon.Critical
-                self.gui_app.show_tray_notification(title, message, icon_type)
+                
+                # Show snooze dialog if alarm_data provided and success
+                if success and alarm_data:
+                    self.gui_app.show_snooze_notification(title, message, alarm_data, icon_type)
+                else:
+                    self.gui_app.show_tray_notification(title, message, icon_type)
             except Exception as e:
                 logger.warning(f"Failed to show tray notification: {e}")
 
@@ -606,6 +624,89 @@ class Alarm:
             self.alarms.clear()
             logger.info(f"All alarms cleared. Removed {alarm_count} alarm(s)")
 
+    def snooze_alarm(self, alarm_data, snooze_minutes=5):
+        """
+        Snooze an alarm by rescheduling it for a specified number of minutes later.
+
+        Creates a one-time job that will trigger after the snooze duration.
+        Tracks the snoozed alarm separately from regular recurring alarms.
+
+        Args:
+            alarm_data: Dictionary containing alarm information (playlist_uri, playlist_name, 
+                       volume, fade_in_enabled, fade_in_duration, spotify_api).
+            snooze_minutes: Number of minutes to snooze (default 5).
+        """
+        logger.info(
+            f"Snoozing alarm - Playlist: {alarm_data.get('playlist_name')}, "
+            f"Duration: {snooze_minutes} minutes"
+        )
+
+        from datetime import datetime, timedelta
+        
+        snooze_time = datetime.now() + timedelta(minutes=snooze_minutes)
+        time_str = snooze_time.strftime('%H:%M:%S')
+        
+        # Schedule one-time job for snooze
+        job = schedule.every().day.at(time_str).do(
+            self.play_playlist,
+            alarm_data.get('playlist_uri'),
+            alarm_data.get('spotify_api'),
+            alarm_data.get('volume', 80),
+            alarm_data.get('playlist_name', 'Playlist'),
+            alarm_data.get('fade_in_enabled', False),
+            alarm_data.get('fade_in_duration', 10)
+        )
+        
+        # Track as snoozed alarm
+        snooze_info = {
+            'snooze_time': snooze_time,
+            'original_playlist': alarm_data.get('playlist_name'),
+            'snooze_duration': snooze_minutes,
+            'job': job
+        }
+        
+        with self._alarms_lock:
+            self.snoozed_alarms.append(snooze_info)
+            logger.info(
+                f"Alarm snoozed for {snooze_minutes} minutes. "
+                f"Will trigger at {time_str}. Total snoozed alarms: {len(self.snoozed_alarms)}"
+            )
+        
+        self._ensure_scheduler_running()
+
+    def get_snoozed_alarms(self):
+        """
+        Get list of currently snoozed alarms.
+
+        Returns:
+            list[dict]: List of snoozed alarm info dictionaries with keys:
+                - snooze_time: Datetime when alarm will trigger
+                - original_playlist: Name of playlist
+                - snooze_duration: Duration of snooze in minutes
+        """
+        with self._alarms_lock:
+            from datetime import datetime
+            # Filter out expired snoozes
+            now = datetime.now()
+            active_snoozes = [
+                {
+                    'snooze_time': s['snooze_time'],
+                    'original_playlist': s['original_playlist'],
+                    'snooze_duration': s['snooze_duration']
+                }
+                for s in self.snoozed_alarms
+                if s['snooze_time'] > now
+            ]
+            
+            # Clean up expired snoozes
+            self.snoozed_alarms = [
+                s for s in self.snoozed_alarms
+                if s['snooze_time'] > now
+            ]
+            
+            logger.debug(f"Retrieved {len(active_snoozes)} active snoozed alarms")
+            return active_snoozes
+
     def shutdown(self):
         """
         Gracefully shutdown the alarm scheduler.
@@ -626,7 +727,17 @@ class Alarm:
         
         with self._alarms_lock:
             alarm_count = len(self.alarms)
+            snoozed_count = len(self.snoozed_alarms)
+            
             for alarm in self.alarms:
                 schedule.cancel_job(alarm['job'])
             self.alarms.clear()
-            logger.info(f"Alarm scheduler shutdown complete. Cleaned up {alarm_count} alarm(s)")
+            
+            for snooze in self.snoozed_alarms:
+                schedule.cancel_job(snooze['job'])
+            self.snoozed_alarms.clear()
+            
+            logger.info(
+                f"Alarm scheduler shutdown complete. "
+                f"Cleaned up {alarm_count} alarm(s) and {snoozed_count} snoozed alarm(s)"
+            )
