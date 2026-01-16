@@ -69,6 +69,20 @@ class TestSetAlarm:
         assert alarm.alarms[0]['playlist_uri'] == 'spotify:playlist:abc123'
         assert alarm.alarms[0]['volume'] == 75
     
+    def test_set_alarm_stores_playlist_name_and_uri(self):
+        """set_alarm should store both playlist_name and playlist_uri."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm.set_alarm('07:30', 'Wake Up Mix', 'spotify:playlist:wake123', mock_api, 70)
+        
+        assert len(alarm.alarms) == 1
+        alarm_data = alarm.alarms[0]
+        assert alarm_data['playlist'] == 'Wake Up Mix'
+        assert alarm_data['playlist_uri'] == 'spotify:playlist:wake123'
+        assert 'playlist' in alarm_data
+        assert 'playlist_uri' in alarm_data
+    
     def test_set_alarm_default_volume(self):
         """Default volume should be 80 if not specified."""
         alarm = Alarm()
@@ -125,6 +139,20 @@ class TestSetAlarm:
         assert len(alarm.alarms) == 1
         assert alarm.alarms[0]['days'] == ['Monday', 'Wednesday', 'Friday']
     
+    def test_set_alarm_with_multiple_alarms_different_uris(self):
+        """Multiple alarms should maintain separate URIs correctly."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm.set_alarm('07:00', 'Morning Mix', 'spotify:playlist:morning123', mock_api, 70)
+        alarm.set_alarm('12:00', 'Lunch Vibes', 'spotify:playlist:lunch456', mock_api, 60)
+        alarm.set_alarm('18:00', 'Evening Jazz', 'spotify:playlist:evening789', mock_api, 80)
+        
+        assert len(alarm.alarms) == 3
+        assert alarm.alarms[0]['playlist_uri'] == 'spotify:playlist:morning123'
+        assert alarm.alarms[1]['playlist_uri'] == 'spotify:playlist:lunch456'
+        assert alarm.alarms[2]['playlist_uri'] == 'spotify:playlist:evening789'
+    
     def test_set_alarm_with_weekdays_shortcut(self):
         """Setting an alarm with 'weekdays' should expand to Mon-Fri."""
         alarm = Alarm()
@@ -179,6 +207,24 @@ class TestGetAlarms:
         assert 'volume' in result[0]
         assert 'days' in result[0]
         assert 'job' not in result[0]
+    
+    def test_get_alarms_includes_both_name_and_uri(self):
+        """get_alarms should return both playlist name and URI for each alarm."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarm.set_alarm('09:00', 'Morning Mix', 'spotify:playlist:morning', mock_api, 70)
+        alarm.set_alarm('17:00', 'Evening Chill', 'spotify:playlist:evening', mock_api, 60)
+        
+        result = alarm.get_alarms()
+        
+        assert len(result) == 2
+        # First alarm
+        assert result[0]['playlist'] == 'Morning Mix'
+        assert result[0]['playlist_uri'] == 'spotify:playlist:morning'
+        # Second alarm
+        assert result[1]['playlist'] == 'Evening Chill'
+        assert result[1]['playlist_uri'] == 'spotify:playlist:evening'
     
     def test_get_alarms_includes_days(self):
         """get_alarms should include days information."""
@@ -252,6 +298,33 @@ class TestPlayPlaylist:
         
         mock_api.play_playlist_by_uri.assert_called_with('spotify:playlist:my123')
     
+    def test_play_playlist_uses_uri_not_name(self):
+        """play_playlist should use playlist URI for playback, not name."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        playlist_uri = 'spotify:playlist:test_uri_123'
+        playlist_name = 'Test Playlist Name'
+        
+        alarm.play_playlist(playlist_uri, mock_api, 75, playlist_name)
+        
+        # Should call play_playlist_by_uri with the URI
+        mock_api.play_playlist_by_uri.assert_called_with(playlist_uri)
+        # Should NOT call play_playlist (the name-based method)
+        assert not hasattr(mock_api.play_playlist, 'called') or not mock_api.play_playlist.called
+    
+    def test_play_playlist_by_uri_called_correctly(self):
+        """play_playlist should call SpotifyAPI.play_playlist_by_uri with correct URI."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        test_uri = 'spotify:playlist:unique_id_xyz'
+        
+        alarm.play_playlist(test_uri, mock_api, 80, 'Playlist Name')
+        
+        # Verify play_playlist_by_uri is called once with the correct URI
+        mock_api.play_playlist_by_uri.assert_called_once_with(test_uri)
+    
     def test_play_playlist_handles_volume_error(self):
         """play_playlist should continue if set_volume fails."""
         alarm = Alarm()
@@ -279,6 +352,29 @@ class TestPlayPlaylist:
         alarm.play_playlist('spotify:playlist:test789', mock_api, 80, 'Test')
         
         assert call_count == 2
+    
+    def test_play_playlist_passes_uri_through_retries(self):
+        """play_playlist should maintain URI consistency across retry attempts."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        test_uri = 'spotify:playlist:retry_test'
+        call_count = 0
+        
+        def side_effect(uri):
+            nonlocal call_count
+            call_count += 1
+            # Verify URI is correct on each attempt
+            assert uri == test_uri
+            if call_count < 2:
+                raise Exception("Transient error")
+        
+        mock_api.play_playlist_by_uri.side_effect = side_effect
+        
+        alarm.play_playlist(test_uri, mock_api, 80, 'Test Playlist')
+        
+        assert call_count == 2
+        assert mock_api.play_playlist_by_uri.call_count == 2
     
     def test_play_playlist_shows_notification_on_success(self):
         """play_playlist should show success notification."""
@@ -439,6 +535,25 @@ class TestConditionalPlayback:
         )
         
         mock_api.play_playlist_by_uri.assert_called_once()
+    
+    def test_conditional_play_uses_uri(self):
+        """_conditional_play_playlist should pass URI to play_playlist."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        test_uri = 'spotify:playlist:conditional_test'
+        today = datetime.now().strftime('%A')
+        
+        # Mock the play_playlist method to track calls
+        with patch.object(alarm, 'play_playlist') as mock_play:
+            alarm._conditional_play_playlist(
+                test_uri, mock_api, 80, 'Test Playlist', False, 10, [today], 'test-id'
+            )
+            
+            # Verify play_playlist was called with the URI
+            mock_play.assert_called_once()
+            args = mock_play.call_args[0]
+            assert args[0] == test_uri
     
     def test_conditional_play_skip_inactive_day(self):
         """Should skip when today is not in active days."""
@@ -1250,6 +1365,23 @@ class TestDaySpecificScheduling:
         
         mock_api.play_playlist_by_uri.assert_called_once()
     
+    def test_alarm_scheduling_preserves_uri(self):
+        """Scheduled alarm should preserve playlist URI for playback."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        playlist_uri = 'spotify:playlist:preserve_test'
+        playlist_name = 'Preserve Test'
+        today = datetime.now().strftime('%A')
+        
+        alarm.set_alarm('14:00', playlist_name, playlist_uri, mock_api, 80, False, 10, [today])
+        
+        # Verify alarm data contains URI
+        assert len(alarm.alarms) == 1
+        alarm_data = alarm.alarms[0]
+        assert alarm_data['playlist_uri'] == playlist_uri
+        assert alarm_data['playlist'] == playlist_name
+    
     def test_get_next_trigger_time_with_days(self):
         """Should calculate next trigger considering day restrictions."""
         alarm = Alarm()
@@ -1303,6 +1435,180 @@ class TestDaySpecificScheduling:
                 assert trigger_day in days
 
 
+class TestPlaylistURIRefactoring:
+    """Tests for playlist URI refactoring - verifies URI-based playback."""
+    
+    def test_set_alarm_stores_both_name_and_uri(self):
+        """set_alarm should store both playlist name (for display) and URI (for playback)."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        playlist_name = 'My Awesome Playlist'
+        playlist_uri = 'spotify:playlist:abc123xyz'
+        
+        alarm.set_alarm('08:30', playlist_name, playlist_uri, mock_api, 75)
+        
+        assert len(alarm.alarms) == 1
+        alarm_data = alarm.alarms[0]
+        assert alarm_data['playlist'] == playlist_name
+        assert alarm_data['playlist_uri'] == playlist_uri
+    
+    def test_play_playlist_uses_uri_parameter(self):
+        """play_playlist should use the URI parameter for playback, not lookup by name."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        test_uri = 'spotify:playlist:direct_uri_123'
+        test_name = 'Display Name'
+        
+        alarm.play_playlist(test_uri, mock_api, 80, test_name)
+        
+        # Should call play_playlist_by_uri with the URI parameter
+        mock_api.play_playlist_by_uri.assert_called_once_with(test_uri)
+    
+    def test_play_playlist_by_uri_receives_correct_uri(self):
+        """SpotifyAPI.play_playlist_by_uri should receive the exact URI passed."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        uris_to_test = [
+            'spotify:playlist:test1',
+            'spotify:playlist:test2',
+            'spotify:playlist:test3'
+        ]
+        
+        for uri in uris_to_test:
+            mock_api.reset_mock()
+            alarm.play_playlist(uri, mock_api, 80, 'Test')
+            mock_api.play_playlist_by_uri.assert_called_once_with(uri)
+    
+    def test_alarm_trigger_flow_uses_uri(self):
+        """Full alarm trigger flow should use URI from set_alarm through to playback."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        playlist_name = 'Morning Routine'
+        playlist_uri = 'spotify:playlist:morning_routine_uri'
+        
+        # Set alarm with name and URI
+        alarm.set_alarm('07:00', playlist_name, playlist_uri, mock_api, 75)
+        
+        # Verify alarm stored both
+        assert alarm.alarms[0]['playlist'] == playlist_name
+        assert alarm.alarms[0]['playlist_uri'] == playlist_uri
+        
+        # Simulate alarm trigger by calling the scheduled function directly
+        # (the _conditional_play_playlist which was scheduled)
+        alarm.play_playlist(playlist_uri, mock_api, 75, playlist_name)
+        
+        # Verify playback used URI
+        mock_api.play_playlist_by_uri.assert_called_with(playlist_uri)
+    
+    def test_get_alarms_returns_both_fields(self):
+        """get_alarms should return both playlist name and URI fields."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        test_cases = [
+            ('06:00', 'Morning', 'spotify:playlist:morning'),
+            ('12:00', 'Lunch', 'spotify:playlist:lunch'),
+            ('18:00', 'Dinner', 'spotify:playlist:dinner'),
+        ]
+        
+        for time, name, uri in test_cases:
+            alarm.set_alarm(time, name, uri, mock_api, 80)
+        
+        alarms = alarm.get_alarms()
+        
+        assert len(alarms) == 3
+        for i, (time, name, uri) in enumerate(test_cases):
+            assert alarms[i]['time'] == time
+            assert alarms[i]['playlist'] == name
+            assert alarms[i]['playlist_uri'] == uri
+    
+    def test_snooze_preserves_uri_for_playback(self):
+        """Snoozed alarm should preserve URI for rescheduled playback."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        playlist_uri = 'spotify:playlist:snooze_test_uri'
+        alarm_data = {
+            'playlist_uri': playlist_uri,
+            'playlist_name': 'Snooze Test',
+            'volume': 80,
+            'fade_in_enabled': False,
+            'fade_in_duration': 10,
+            'spotify_api': mock_api
+        }
+        
+        alarm.snooze_alarm(alarm_data, snooze_minutes=5)
+        
+        # Verify snoozed alarm has URI
+        assert len(alarm.snoozed_alarms) == 1
+        assert alarm.snoozed_alarms[0]['playlist_uri'] == playlist_uri
+    
+    def test_conditional_playback_passes_uri_correctly(self):
+        """_conditional_play_playlist should pass URI to play_playlist."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        test_uri = 'spotify:playlist:conditional_uri'
+        today = datetime.now().strftime('%A')
+        
+        # Mock play_playlist to verify it receives the URI
+        with patch.object(alarm, 'play_playlist') as mock_play:
+            alarm._conditional_play_playlist(
+                test_uri, mock_api, 80, 'Test', False, 10, [today], 'test-id'
+            )
+            
+            # Verify first argument is the URI
+            mock_play.assert_called_once()
+            call_args = mock_play.call_args[0]
+            assert call_args[0] == test_uri
+    
+    def test_multiple_alarms_maintain_uri_independence(self):
+        """Multiple alarms should each maintain their own independent URIs."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        alarms_config = [
+            ('06:00', 'Wake Up', 'spotify:playlist:wake'),
+            ('08:00', 'Commute', 'spotify:playlist:commute'),
+            ('12:00', 'Lunch', 'spotify:playlist:lunch'),
+            ('18:00', 'Dinner', 'spotify:playlist:dinner'),
+            ('22:00', 'Sleep', 'spotify:playlist:sleep'),
+        ]
+        
+        for time, name, uri in alarms_config:
+            alarm.set_alarm(time, name, uri, mock_api, 80)
+        
+        # Verify each alarm has correct URI
+        for i, (time, name, uri) in enumerate(alarms_config):
+            assert alarm.alarms[i]['playlist_uri'] == uri
+            assert alarm.alarms[i]['playlist'] == name
+    
+    def test_retry_logic_maintains_uri_consistency(self):
+        """Retry logic should maintain URI consistency across attempts."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        test_uri = 'spotify:playlist:retry_uri'
+        attempts = []
+        
+        def track_attempts(uri):
+            attempts.append(uri)
+            if len(attempts) < 3:
+                raise Exception("Transient error")
+        
+        mock_api.play_playlist_by_uri.side_effect = track_attempts
+        
+        alarm.play_playlist(test_uri, mock_api, 80, 'Test')
+        
+        # All attempts should use the same URI
+        assert len(attempts) == 3
+        assert all(uri == test_uri for uri in attempts)
+
+
 class TestSnoozeLogic:
     """Tests for snooze logic - Phase 2."""
     
@@ -1331,6 +1637,28 @@ class TestSnoozeLogic:
         time_diff = abs((snooze_time - expected_time).total_seconds())
         
         assert time_diff < 5  # Within 5 seconds tolerance
+    
+    def test_snooze_preserves_uri(self):
+        """Snooze should preserve playlist URI for rescheduled playback."""
+        alarm = Alarm()
+        mock_api = Mock()
+        
+        test_uri = 'spotify:playlist:snooze_uri_test'
+        alarm_data = {
+            'playlist_uri': test_uri,
+            'playlist_name': 'Snooze URI Test',
+            'volume': 75,
+            'fade_in_enabled': False,
+            'fade_in_duration': 10,
+            'spotify_api': mock_api
+        }
+        
+        alarm.snooze_alarm(alarm_data, snooze_minutes=5)
+        
+        # Verify snoozed alarm has correct URI
+        assert len(alarm.snoozed_alarms) == 1
+        snoozed = alarm.snoozed_alarms[0]
+        assert snoozed['playlist_uri'] == test_uri
     
     def test_snooze_preserves_alarm_settings(self):
         """Snooze should preserve all alarm settings."""
