@@ -1,4 +1,4 @@
-; Inno Setup Script for Alarmify
+; Inno Setup Script for Charmed
 ; This script creates a Windows installer with the following features:
 ; - Start Menu shortcuts
 ; - Desktop shortcut (optional)
@@ -6,12 +6,12 @@
 ; - Uninstaller
 ; - File associations (future use)
 
-#define MyAppName "Alarmify"
+#define MyAppName "Charmed"
 #define MyAppVersion "1.0.0"
-#define MyAppPublisher "Alarmify Team"
-#define MyAppURL "https://github.com/yourusername/alarmify"
-#define MyAppExeName "Alarmify.exe"
-#define MyAppAssocName "Alarmify Alarm File"
+#define MyAppPublisher "Charmed Team"
+#define MyAppURL "https://github.com/yourusername/charmed"
+#define MyAppExeName "Charmed.exe"
+#define MyAppAssocName "Charmed Alarm File"
 #define MyAppAssocExt ".alarm"
 #define MyAppAssocKey StringChange(MyAppAssocName, " ", "") + MyAppAssocExt
 
@@ -36,7 +36,7 @@ DisableProgramGroupPage=auto
 
 ; Output settings
 OutputDir=Output
-OutputBaseFilename=AlarmifySetup-{#MyAppVersion}
+OutputBaseFilename=CharmedSetup-{#MyAppVersion}
 
 ; Compression settings
 Compression=lzma2/max

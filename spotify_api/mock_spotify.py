@@ -203,7 +203,7 @@ class MockSpotifyAPI:
         if not self._premium:
             raise RuntimeError(
                 'Playback requires Spotify Premium.\n\n'
-                'Please upgrade to Spotify Premium to use Alarmify.\n'
+                'Please upgrade to Spotify Premium to use Charmed.\n'
                 'Visit: https://www.spotify.com/premium'
             )
         

@@ -1,5 +1,5 @@
 """
-test_integration.py - Integration tests for Alarmify
+test_integration.py - Integration tests for Charmed
 
 Comprehensive integration tests covering:
 - Full alarm workflow from scheduling to playback with mocked Spotify API
@@ -763,7 +763,7 @@ class TestComplexPhase2Scenarios:
     
     def setup_method(self):
         """Clear snooze state before each test."""
-        snooze_state_file = Path.home() / '.alarmify' / 'snooze_state.json'
+        snooze_state_file = Path.home() / '.charmed' / 'snooze_state.json'
         if snooze_state_file.exists():
             snooze_state_file.unlink()
     
@@ -1631,17 +1631,17 @@ class TestLoggingSystem:
             logger.info('Test log message')
             
             # Verify log file exists with timestamped name
-            log_files = list(tmp_path.glob('alarmify_*.log'))
+            log_files = list(tmp_path.glob('charmed_*.log'))
             assert len(log_files) == 1
             
-            # Verify filename format (alarmify_YYYYMMDD_HHMMSS.log)
+            # Verify filename format (charmed_YYYYMMDD_HHMMSS.log)
             log_file = log_files[0]
-            assert log_file.name.startswith('alarmify_')
+            assert log_file.name.startswith('charmed_')
             assert log_file.name.endswith('.log')
             
             # Verify timestamp format in filename
             filename_parts = log_file.stem.split('_')
-            assert len(filename_parts) == 3  # ['alarmify', 'YYYYMMDD', 'HHMMSS']
+            assert len(filename_parts) == 3  # ['charmed', 'YYYYMMDD', 'HHMMSS']
             assert len(filename_parts[1]) == 8  # YYYYMMDD
             assert len(filename_parts[2]) == 6  # HHMMSS
             
@@ -1675,7 +1675,7 @@ class TestLoggingSystem:
             logger.error('Error message')
             
             # Get log file
-            log_files = list(tmp_path.glob('alarmify_*.log'))
+            log_files = list(tmp_path.glob('charmed_*.log'))
             assert len(log_files) == 1
             
             # Read log content
@@ -1722,7 +1722,7 @@ class TestLoggingSystem:
             logger.error('Error message - should appear')
             
             # Get log file
-            log_files = list(tmp_path.glob('alarmify_*.log'))
+            log_files = list(tmp_path.glob('charmed_*.log'))
             assert len(log_files) == 1
             
             # Read log content
@@ -1749,9 +1749,9 @@ class TestLoggingSystem:
         
         try:
             # Create multiple log files with different timestamps
-            log_file_1 = tmp_path / 'alarmify_20240101_120000.log'
-            log_file_2 = tmp_path / 'alarmify_20240102_120000.log'
-            log_file_3 = tmp_path / 'alarmify_20240103_120000.log'
+            log_file_1 = tmp_path / 'charmed_20240101_120000.log'
+            log_file_2 = tmp_path / 'charmed_20240102_120000.log'
+            log_file_3 = tmp_path / 'charmed_20240103_120000.log'
             
             # Create files with slight delay to ensure different modification times
             log_file_1.write_text('Log 1')
@@ -1787,9 +1787,9 @@ class TestLoggingSystem:
         
         try:
             # Create log files including rotated ones
-            log_file_1 = tmp_path / 'alarmify_20240101_120000.log'
-            log_file_2 = tmp_path / 'alarmify_20240101_120000.log.1'
-            log_file_3 = tmp_path / 'alarmify_20240101_120000.log.2'
+            log_file_1 = tmp_path / 'charmed_20240101_120000.log'
+            log_file_2 = tmp_path / 'charmed_20240101_120000.log.1'
+            log_file_3 = tmp_path / 'charmed_20240101_120000.log.2'
             
             log_file_1.write_text('Current log')
             log_file_2.write_text('Rotated log 1')
@@ -1803,9 +1803,9 @@ class TestLoggingSystem:
             
             # Verify file names
             file_names = [f.name for f in log_files]
-            assert 'alarmify_20240101_120000.log' in file_names
-            assert 'alarmify_20240101_120000.log.1' in file_names
-            assert 'alarmify_20240101_120000.log.2' in file_names
+            assert 'charmed_20240101_120000.log' in file_names
+            assert 'charmed_20240101_120000.log.1' in file_names
+            assert 'charmed_20240101_120000.log.2' in file_names
             
         finally:
             # Restore original LOG_DIR
@@ -1883,9 +1883,9 @@ class TestLoggingSystem:
         
         try:
             # Create multiple log files
-            log_file_1 = tmp_path / 'alarmify_20240101_120000.log'
-            log_file_2 = tmp_path / 'alarmify_20240102_120000.log'
-            log_file_3 = tmp_path / 'alarmify_20240103_120000.log'
+            log_file_1 = tmp_path / 'charmed_20240101_120000.log'
+            log_file_2 = tmp_path / 'charmed_20240102_120000.log'
+            log_file_3 = tmp_path / 'charmed_20240103_120000.log'
             
             log_file_1.write_text('Log 1')
             time.sleep(0.01)
@@ -1918,7 +1918,7 @@ class TestLoggingSystem:
             logger.info('Test message')
             
             # Read log file
-            log_files = list(tmp_path.glob('alarmify_*.log'))
+            log_files = list(tmp_path.glob('charmed_*.log'))
             with open(log_files[0], 'r', encoding='utf-8') as f:
                 content = f.read()
             
@@ -1968,7 +1968,7 @@ class TestLoggingSystem:
             logger3.info('Message from module3')
             
             # Verify all messages are in the same file
-            log_files = list(tmp_path.glob('alarmify_*.log'))
+            log_files = list(tmp_path.glob('charmed_*.log'))
             assert len(log_files) == 1
             
             with open(log_files[0], 'r', encoding='utf-8') as f:
@@ -2004,7 +2004,7 @@ class TestLoggingSystem:
             logger.info('Test message')
             
             # Verify only one log file was created
-            log_files = list(tmp_path.glob('alarmify_*.log'))
+            log_files = list(tmp_path.glob('charmed_*.log'))
             assert len(log_files) == 1
             
             # Verify message was logged

@@ -1,5 +1,5 @@
 """
-logging_config.py - Centralized logging configuration for Alarmify
+logging_config.py - Centralized logging configuration for Charmed
 
 Provides structured logging with both console and file output.
 Logs are saved to timestamped files in the 'logs' directory.
@@ -51,7 +51,7 @@ def setup_logging(log_level=logging.INFO):
     LOG_DIR.mkdir(exist_ok=True)
     
     # Create log filename with timestamp
-    log_filename = LOG_DIR / f'alarmify_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
+    log_filename = LOG_DIR / f'charmed_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'
     
     # Define log format with timestamp, level, module, and message
     log_format = '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
@@ -85,7 +85,7 @@ def setup_logging(log_level=logging.INFO):
     
     # Log startup message
     root_logger.info('='*60)
-    root_logger.info('Alarmify logging system initialized')
+    root_logger.info('Charmed logging system initialized')
     root_logger.info(f'Log file: {log_filename}')
     root_logger.info('='*60)
     
@@ -119,7 +119,7 @@ def get_log_files():
     if not LOG_DIR.exists():
         return []
     
-    log_files = list(LOG_DIR.glob('alarmify_*.log*'))
+    log_files = list(LOG_DIR.glob('charmed_*.log*'))
     # Sort by modification time, newest first
     log_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
     return log_files

@@ -1,6 +1,6 @@
-# Contributing to Alarmify
+# Contributing to Charmed
 
-Thank you for your interest in contributing to Alarmify! This document provides guidelines and instructions for contributing to the project.
+Thank you for your interest in contributing to Charmed! This document provides guidelines and instructions for contributing to the project.
 
 ## Table of Contents
 
@@ -67,11 +67,11 @@ Before contributing, ensure you have:
 
 ```bash
 # Fork the repository on GitHub, then clone your fork
-git clone https://github.com/YOUR_USERNAME/alarmify.git
-cd alarmify
+git clone https://github.com/YOUR_USERNAME/charmed.git
+cd charmed
 
 # Add upstream remote for staying updated
-git remote add upstream https://github.com/ORIGINAL_OWNER/alarmify.git
+git remote add upstream https://github.com/ORIGINAL_OWNER/charmed.git
 ```
 
 ### 2. Create Virtual Environment
@@ -132,7 +132,7 @@ git checkout -b fix/issue-description
 
 ### Python Style Guide
 
-Alarmify follows **PEP 8** conventions with some project-specific guidelines:
+Charmed follows **PEP 8** conventions with some project-specific guidelines:
 
 #### General Principles
 
@@ -304,7 +304,7 @@ except Exception as e:
 ### Module Overview
 
 ```
-alarmify/
+charmed/
 ├── main.py              # Entry point: creates QApplication and AlarmApp
 ├── gui.py               # All UI components and PyQt5 widgets
 │   ├── AlarmApp         # Main window with playlist browser and controls
@@ -600,7 +600,7 @@ What actually happened
 **Environment**
 - OS: [e.g., Windows 10]
 - Python Version: [e.g., 3.10.5]
-- Alarmify Version: [e.g., commit hash]
+- Charmed Version: [e.g., commit hash]
 
 **Screenshots/Logs**
 Any relevant screenshots or console output
@@ -688,7 +688,7 @@ Reference in markdown:
 
 The build system consists of:
 
-1. **alarmify.spec** - PyInstaller configuration
+1. **charmed.spec** - PyInstaller configuration
 2. **installer.iss** - Inno Setup script
 3. **build_installer.py** - Build orchestration
 4. **version_manager.py** - Version management
@@ -702,7 +702,7 @@ The build system consists of:
 # Quick build (executable only)
 python build_installer.py --skip-inno
 
-# Output: dist/Alarmify.exe
+# Output: dist/Charmed.exe
 ```
 
 #### Build Full Installer
@@ -714,8 +714,8 @@ Requires [Inno Setup 6](https://jrsoftware.org/isdl.php):
 python build_installer.py
 
 # Outputs:
-# - dist/Alarmify.exe
-# - Output/AlarmifySetup-1.0.0.exe
+# - dist/Charmed.exe
+# - Output/CharmedSetup-1.0.0.exe
 ```
 
 #### Build Options
@@ -735,7 +735,7 @@ python build_installer.py --skip-tests --skip-inno
 
 #### Add Data Files
 
-Edit `alarmify.spec`:
+Edit `charmed.spec`:
 ```python
 datas=[
     ('spotify_style.qss', '.'),
@@ -745,7 +745,7 @@ datas=[
 
 #### Add Dependencies
 
-Edit `alarmify.spec`:
+Edit `charmed.spec`:
 ```python
 hiddenimports=[
     'PyQt5.sip',
@@ -860,4 +860,4 @@ If you have questions about contributing:
 3. Ask in [Discussions](../../discussions)
 4. Reach out to maintainers
 
-Thank you for contributing to Alarmify! 🎵⏰
+Thank you for contributing to Charmed! 🎵⏰

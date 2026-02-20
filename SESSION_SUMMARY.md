@@ -1,43 +1,109 @@
-# Session Summary — 2026-02-19
+# Session Summary — 2026-02-20
 **Editor**: Antigravity
 
 ## 🇫🇷 Français
-**Ce qui a été fait** :
-- Localisation et intégration des règles IA partagées depuis `kuro-rules`.
-- Installation des liens symboliques pour `AI_GUIDELINES.md`, `.cursorrules`, et `copilot-instructions.md`.
-- Copie de la configuration `.pre-commit-config.yaml`.
-- Initialisation de `SESSION_SUMMARY.md` pour la traçabilité.
-**Initiatives données** :
-- Établissement d'une méthode de travail concrète basée sur le protocole pédagogique et le mode "Avocat du Diable".
-**Fichiers modifiés** :
-- `.cursorrules` (Link)
-- `AI_GUIDELINES.md` (Link)
-- `.pre-commit-config.yaml` (Copy)
-- `.github/copilot-instructions.md` (Link)
-- `SESSION_SUMMARY.md` (New)
-**Étapes suivantes** :
-- Vérifier l'installation de `pre-commit`.
-- Effectuer un check de sécurité avec `bandit`.
-- Commencer le travail concret sur le projet en suivant le protocole.
+**Ce qui a été fait** : 
+- Finalisation du nettoyage "Charmed" MVP : suppression de ~1500 lignes de code mort (Historique, Modèles, Sync Cloud).
+- Implémentation du **Local Fallback Alarm** dans `alarm.py` via `QMediaPlayer`.
+- Intégration et synchronisation des nouvelles règles universelles depuis `kuro-rules` (**CodeQL, Fuzzing, Locust, Mutation Testing**).
+- Ajout du **Principe de Réversibilité** et des mandats de gestion de la complexité du code.
+- Création du fichier `security.md` mandataire et durcissement des politiques de sécurité (**Policy as Code**).
+- Mise à jour cumulative de la documentation technique et des protocoles pédagogiques.
+
+**Initiatives données** : 
+- Approche MVP "One Feature" : focus strict sur la fiabilité de l'alarme avec fallback local.
+- Zéro code mort : élimination chirurgicale des classes et méthodes résiduelles pour une maintenance simplifiée.
+- Généralisation de la traçabilité historique totale.
+
+**Fichiers modifiés** : 
+- `alarm.py`
+- `gui.py`
+- `AI_GUIDELINES.md`
+- `.cursorrules`
+- `security.md`
+- `SESSION_SUMMARY.md`
+- `task.md` (artifact)
+
+**Étapes suivantes** : 
+- Lancement de la version pre-MVP Charmed.
+- Configuration CodeQL et SonarQube sur le dépôt principal.
 
 ## 🇬🇧 English
-**What was done**:
-- Located and integrated shared AI rules from `kuro-rules`.
-- Installed symbolic links for `AI_GUIDELINES.md`, `.cursorrules`, and `copilot-instructions.md`.
-- Copied `.pre-commit-config.yaml` configuration.
-- Initialized `SESSION_SUMMARY.md` for traceability.
-**Initiatives given**:
-- Established a concrete working method based on the pedagogical protocol and "Devil's Advocate" mode.
-**Files changed**:
-- `.cursorrules` (Link)
-- `AI_GUIDELINES.md` (Link)
-- `.pre-commit-config.yaml` (Copy)
-- `.github/copilot-instructions.md` (Link)
-- `SESSION_SUMMARY.md` (New)
-**Next steps**:
-- Verify `pre-commit` installation.
-- Run security check with `bandit`.
-- Begin concrete work on the project following the protocol.
+**What was done**: 
+- Finalized "Charmed" MVP cleanup: removed ~1500 lines of dead code (History, Templates, Cloud Sync).
+- Implemented **Local Fallback Alarm** in `alarm.py` using `QMediaPlayer`.
+- Integrated and synced new universal rules from `kuro-rules` (**CodeQL, Fuzzing, Locust, Mutation Testing**).
+- Added **Reversibility Principle** and code complexity management mandates.
+- Created mandatory `security.md` and hardened security policies (**Policy as Code**).
+- Cumulative update of technical documentation and pedagogical protocols.
 
-**Tests**: N/A
+**Initiatives given**: 
+- "One Feature" MVP approach: strict focus on alarm reliability with local fallback.
+- Zero-Dead-Code: surgical elimination of residual classes and methods for clean maintenance.
+- Generalization of full historical traceability.
+
+**Files changed**: 
+- `alarm.py`
+- `gui.py`
+- `AI_GUIDELINES.md`
+- `.cursorrules`
+- `security.md`
+- `SESSION_SUMMARY.md`
+- `task.md` (artifact)
+
+**Next steps**: 
+- Launch pre-MVP Charmed version.
+- Configure CodeQL and SonarQube on the main repository.
+
+**Tests**: 24 passing (Spotify + Local Fallback)
 **Blockers**: None
+
+---
+
+# Session Summary — 2026-02-20
+**Editor**: Antigravity
+
+## 🇫🇷 Français
+**Ce qui a été fait** : 
+- Lancement du rebranding de "Charmed/Charmed" vers "Charmed".
+- Mise à jour de la documentation (`README.md`, `CONTRIBUTING.md`).
+- Installation de `bandit` et exécution du scan de sécurité obligatoire.
+- Création du plan d'implémentation et de la liste des tâches.
+
+- Complète rebranding de l'écosystème (documentation, UI, scripts de build, docs/, mobile_app/).
+- Correction de la vulnérabilité MD5 (passage à SHA256 dans `cloud_sync_api.py`).
+- Refactorisation de `Alarm` pour une meilleure testabilité.
+- Correction des régressions de tests après rebranding.
+
+**Fichiers modifiés** : 
+- `README.md`
+- `CONTRIBUTING.md`
+- `task.md` (artifact)
+- `implementation_plan.md` (artifact)
+
+- Vérification finale avec succès de la suite de tests.
+- Rebranding case-insensitive global effectué.
+
+## 🇬🇧 English
+**What was done**: 
+- Launched rebranding from "Charmed/Charmed" to "Charmed".
+- Updated documentation (`README.md`, `CONTRIBUTING.md`).
+- Installed `bandit` and executed mandatory security scan.
+- Created implementation plan and task list.
+
+- Complete ecosystem rebranding (documentation, UI, build scripts, docs/, mobile_app/).
+- Fixed MD5 vulnerability (switched to SHA256 in `cloud_sync_api.py`).
+- Refactored `Alarm` for better testability.
+- Fixed test regressions after rebranding.
+
+**Files changed**: 
+- `README.md`
+- `CONTRIBUTING.md`
+- `task.md` (artifact)
+- `implementation_plan.md` (artifact)
+
+- Successfully verified the entire test suite.
+- Global case-insensitive rebranding completed.
+
+**Tests**: Bandit scan completed (identified issues to be fixed).
+**Blockers**: None.

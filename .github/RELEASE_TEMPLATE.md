@@ -2,7 +2,7 @@
 
 Use this template for creating release notes (will be auto-generated for tagged releases).
 
-## Alarmify vX.Y.Z
+## Charmed vX.Y.Z
 
 **Release Date:** YYYY-MM-DD
 
@@ -46,14 +46,14 @@ Brief overview of the most important changes in this release.
 
 #### Windows Installer (Recommended)
 
-1. Download `AlarmifySetup-X.Y.Z.exe`
+1. Download `CharmedSetup-X.Y.Z.exe`
 2. Run the installer
 3. Follow setup wizard
 4. Optionally enable auto-start
 
 #### Standalone Executable
 
-1. Download `Alarmify.exe` from artifacts
+1. Download `Charmed.exe` from artifacts
 2. Run directly (no installation needed)
 
 ### 🔐 Verification
@@ -61,7 +61,7 @@ Brief overview of the most important changes in this release.
 Verify installer integrity:
 
 ```powershell
-Get-FileHash AlarmifySetup-X.Y.Z.exe -Algorithm SHA256
+Get-FileHash CharmedSetup-X.Y.Z.exe -Algorithm SHA256
 # Compare with checksums.txt
 ```
 
@@ -79,7 +79,7 @@ Get-FileHash AlarmifySetup-X.Y.Z.exe -Algorithm SHA256
    - Create new app
    - Copy Client ID and Client Secret
 
-2. **Configure Alarmify:**
+2. **Configure Charmed:**
    - Launch application
    - Open Settings
    - Enter API credentials
@@ -104,9 +104,9 @@ Preview of upcoming features:
 
 ### 📖 Documentation
 
-- [README](https://github.com/yourusername/alarmify/blob/main/README.md)
-- [Build Guide](https://github.com/yourusername/alarmify/blob/main/BUILD.md)
-- [Contributing](https://github.com/yourusername/alarmify/blob/main/CONTRIBUTING.md)
+- [README](https://github.com/yourusername/charmed/blob/main/README.md)
+- [Build Guide](https://github.com/yourusername/charmed/blob/main/BUILD.md)
+- [Contributing](https://github.com/yourusername/charmed/blob/main/CONTRIBUTING.md)
 
 ### 🙏 Contributors
 
@@ -116,12 +116,12 @@ Thanks to all contributors:
 
 ### 📝 Full Changelog
 
-See [CHANGELOG.md](https://github.com/yourusername/alarmify/blob/main/CHANGELOG.md) for complete details.
+See [CHANGELOG.md](https://github.com/yourusername/charmed/blob/main/CHANGELOG.md) for complete details.
 
 ---
 
-**Download:** [AlarmifySetup-X.Y.Z.exe](https://github.com/yourusername/alarmify/releases/download/vX.Y.Z/AlarmifySetup-X.Y.Z.exe)
+**Download:** [CharmedSetup-X.Y.Z.exe](https://github.com/yourusername/charmed/releases/download/vX.Y.Z/CharmedSetup-X.Y.Z.exe)
 
-**Checksums:** [checksums.txt](https://github.com/yourusername/alarmify/releases/download/vX.Y.Z/checksums.txt)
+**Checksums:** [checksums.txt](https://github.com/yourusername/charmed/releases/download/vX.Y.Z/checksums.txt)
 
-**Questions?** Open an [issue](https://github.com/yourusername/alarmify/issues) or [discussion](https://github.com/yourusername/alarmify/discussions)
+**Questions?** Open an [issue](https://github.com/yourusername/charmed/issues) or [discussion](https://github.com/yourusername/charmed/discussions)

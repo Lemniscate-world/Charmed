@@ -34,12 +34,12 @@ pip install -r requirements.txt
 - Virtual env: `.venv/` (per gitignore convention)
 
 ## Build System
-- `alarmify.spec`: PyInstaller configuration (defines how executable is built)
+- `charmed.spec`: PyInstaller configuration (defines how executable is built)
 - `installer.iss`: Inno Setup script (creates Windows installer with shortcuts, auto-start)
 - `build_installer.py`: Orchestrates build process (PyInstaller → smoke tests → Inno Setup)
 - `version_manager.py`: Manages version numbers across files
 - `.github/workflows/build.yml`: CI/CD pipeline for automated builds and releases
-- Build outputs: `dist/Alarmify.exe` (executable), `Output/AlarmifySetup-*.exe` (installer)
+- Build outputs: `dist/Charmed.exe` (executable), `Output/CharmedSetup-*.exe` (installer)
 
 ### Build Features
 - Single-file executable with all dependencies bundled

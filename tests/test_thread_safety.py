@@ -1,5 +1,5 @@
 """
-test_thread_safety.py - Thread safety tests for Alarmify
+test_thread_safety.py - Thread safety tests for Charmed
 
 Tests concurrent access patterns to ensure no race conditions occur
 between GUI thread and alarm scheduler thread.
@@ -160,6 +160,7 @@ class TestSpotifyAPIThreadSafety:
                 {'name': 'Playlist 2', 'uri': 'spotify:playlist:2'}
             ]
         }
+        mock_sp.devices.return_value = {'devices': [{'is_active': True}]}
         
         def play_and_volume():
             api.set_volume(80)
@@ -237,6 +238,7 @@ class TestThreadSafeSpotifyAPIWrapper:
                 {'name': 'Test', 'uri': 'spotify:playlist:1'}
             ]
         }
+        mock_sp.devices.return_value = {'devices': [{'is_active': True}]}
         
         def play_with_volume():
             api.set_volume(75)
@@ -330,6 +332,7 @@ class TestIntegratedThreadSafety:
                 {'name': 'Evening', 'uri': 'spotify:playlist:2', 'id': '2'}
             ]
         }
+        mock_sp.devices.return_value = {'devices': [{'is_active': True}]}
         
         gui_results = []
         alarm_triggered = []
@@ -392,6 +395,7 @@ class TestIntegratedThreadSafety:
             ],
             'next': None
         }
+        mock_sp.devices.return_value = {'devices': [{'is_active': True}]}
         
         gui_results = []
         alarm_triggered = []

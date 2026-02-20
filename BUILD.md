@@ -1,6 +1,6 @@
 # Build and Installer Guide
 
-This document explains how to build Alarmify from source and create installers.
+This document explains how to build Charmed from source and create installers.
 
 ## Table of Contents
 
@@ -52,7 +52,7 @@ pip install pyinstaller
 python build_installer.py --skip-inno
 ```
 
-Output: `dist/Alarmify.exe`
+Output: `dist/Charmed.exe`
 
 ### Build Complete Installer
 
@@ -64,8 +64,8 @@ python build_installer.py
 ```
 
 Output: 
-- `dist/Alarmify.exe` - Standalone executable
-- `Output/AlarmifySetup-1.0.0.exe` - Windows installer
+- `dist/Charmed.exe` - Standalone executable
+- `Output/CharmedSetup-1.0.0.exe` - Windows installer
 
 ## Build Process
 
@@ -80,7 +80,7 @@ Removes previous build outputs:
 
 ### Stage 2: PyInstaller Build
 
-Creates standalone executable using `alarmify.spec`:
+Creates standalone executable using `charmed.spec`:
 
 1. Analyzes `main.py` and dependencies
 2. Collects Python modules and packages
@@ -88,7 +88,7 @@ Creates standalone executable using `alarmify.spec`:
 4. Creates single-file executable
 5. Applies compression (UPX)
 
-Configuration in `alarmify.spec`:
+Configuration in `charmed.spec`:
 - Entry point: `main.py`
 - Icon: `Logo First Draft.png`
 - Console: Hidden (GUI app)
@@ -158,7 +158,7 @@ python build_installer.py --skip-inno
 python build_installer.py --skip-tests
 ```
 
-### alarmify.spec
+### charmed.spec
 
 PyInstaller specification file. Configures:
 - Entry point and dependencies
@@ -312,15 +312,15 @@ See [code_signing_config.md](code_signing_config.md) for complete instructions.
 ### PyInstaller Issues
 
 **Error: Module not found**
-- Add to `hiddenimports` in `alarmify.spec`
+- Add to `hiddenimports` in `charmed.spec`
 - Example: `'PyQt5.sip'`
 
 **Error: Data file not found**
-- Add to `datas` in `alarmify.spec`
+- Add to `datas` in `charmed.spec`
 - Example: `('Logo First Draft.png', '.')`
 
 **Executable too large**
-- Disable UPX: Set `upx=False` in `alarmify.spec`
+- Disable UPX: Set `upx=False` in `charmed.spec`
 - Exclude unused modules in `excludes`
 
 **Executable fails to run**
@@ -373,21 +373,21 @@ See [code_signing_config.md](code_signing_config.md) for complete instructions.
 
 For debugging, enable console window:
 
-1. Edit `alarmify.spec`:
+1. Edit `charmed.spec`:
    ```python
    console=True,  # Change from False
    ```
 
 2. Build:
    ```powershell
-   python -m PyInstaller alarmify.spec
+   python -m PyInstaller charmed.spec
    ```
 
 ### Development Build
 
 Quick build without compression:
 
-1. Edit `alarmify.spec`:
+1. Edit `charmed.spec`:
    ```python
    upx=False,  # Disable compression
    ```

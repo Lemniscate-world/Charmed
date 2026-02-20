@@ -1,9 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec file for Alarmify
+PyInstaller spec file for Charmed
 
 This file configures how PyInstaller builds the executable.
-Run with: python -m PyInstaller alarmify.spec
+Run with: python -m PyInstaller charmed.spec
 """
 
 import sys
@@ -72,7 +72,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Alarmify',                 # Output executable name
+    name='Charmed',                 # Output executable name
     debug=False,                     # Disable debug mode
     bootloader_ignore_signals=False,
     strip=False,                     # Don't strip symbols

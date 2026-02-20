@@ -20,7 +20,7 @@ import sys
 # Get project root directory
 PROJECT_ROOT = Path(__file__).parent.parent
 DIST_DIR = PROJECT_ROOT / "dist"
-EXE_PATH = DIST_DIR / "Alarmify.exe"
+EXE_PATH = DIST_DIR / "Charmed.exe"
 OUTPUT_DIR = PROJECT_ROOT / "Output"
 
 
@@ -107,8 +107,8 @@ class TestVersionInfo:
     
     def test_spec_file_exists(self):
         """Test that PyInstaller spec file exists."""
-        spec_file = PROJECT_ROOT / "alarmify.spec"
-        assert spec_file.exists(), "alarmify.spec not found"
+        spec_file = PROJECT_ROOT / "charmed.spec"
+        assert spec_file.exists(), "charmed.spec not found"
     
     def test_installer_script_exists(self):
         """Test that Inno Setup script exists."""
@@ -145,7 +145,7 @@ class TestVersionInfo:
             
             # Check for common version info strings
             version_strings = [
-                b'Alarmify',
+                b'Charmed',
                 b'FileDescription',
                 b'ProductName',
             ]
@@ -159,24 +159,24 @@ class TestBuildConfiguration:
     
     def test_spec_file_syntax(self):
         """Test that spec file has valid Python syntax."""
-        spec_file = PROJECT_ROOT / "alarmify.spec"
+        spec_file = PROJECT_ROOT / "charmed.spec"
         
         if not spec_file.exists():
-            pytest.skip("alarmify.spec not found")
+            pytest.skip("charmed.spec not found")
         
         try:
             with open(spec_file, 'r', encoding='utf-8') as f:
                 code = f.read()
                 compile(code, str(spec_file), 'exec')
         except SyntaxError as e:
-            pytest.fail(f"Syntax error in alarmify.spec: {e}")
+            pytest.fail(f"Syntax error in charmed.spec: {e}")
     
     def test_required_assets_defined(self):
         """Test that required assets are defined in spec file."""
-        spec_file = PROJECT_ROOT / "alarmify.spec"
+        spec_file = PROJECT_ROOT / "charmed.spec"
         
         if not spec_file.exists():
-            pytest.skip("alarmify.spec not found")
+            pytest.skip("charmed.spec not found")
         
         content = spec_file.read_text(encoding='utf-8')
         
@@ -186,50 +186,50 @@ class TestBuildConfiguration:
         ]
         
         for asset in required_assets:
-            assert asset in content, f"Asset '{asset}' not found in alarmify.spec"
+            assert asset in content, f"Asset '{asset}' not found in charmed.spec"
     
     def test_spec_includes_cloud_sync_module(self):
         """Test that spec file includes cloud_sync module dependencies."""
-        spec_file = PROJECT_ROOT / "alarmify.spec"
+        spec_file = PROJECT_ROOT / "charmed.spec"
         
         if not spec_file.exists():
-            pytest.skip("alarmify.spec not found")
+            pytest.skip("charmed.spec not found")
         
         content = spec_file.read_text(encoding='utf-8')
         
         # Check for cloud_sync in hiddenimports or datas
-        assert 'cloud_sync' in content, "cloud_sync module not referenced in alarmify.spec"
+        assert 'cloud_sync' in content, "cloud_sync module not referenced in charmed.spec"
     
     def test_spec_includes_device_wake_manager(self):
         """Test that spec file includes device_wake_manager dependencies."""
-        spec_file = PROJECT_ROOT / "alarmify.spec"
+        spec_file = PROJECT_ROOT / "charmed.spec"
         
         if not spec_file.exists():
-            pytest.skip("alarmify.spec not found")
+            pytest.skip("charmed.spec not found")
         
         content = spec_file.read_text(encoding='utf-8')
         
         # Check for device_wake_manager
-        assert 'device_wake_manager' in content, "device_wake_manager not referenced in alarmify.spec"
+        assert 'device_wake_manager' in content, "device_wake_manager not referenced in charmed.spec"
     
     def test_spec_includes_logging_config(self):
         """Test that spec file includes logging_config dependencies."""
-        spec_file = PROJECT_ROOT / "alarmify.spec"
+        spec_file = PROJECT_ROOT / "charmed.spec"
         
         if not spec_file.exists():
-            pytest.skip("alarmify.spec not found")
+            pytest.skip("charmed.spec not found")
         
         content = spec_file.read_text(encoding='utf-8')
         
         # Check for logging_config
-        assert 'logging_config' in content, "logging_config not referenced in alarmify.spec"
+        assert 'logging_config' in content, "logging_config not referenced in charmed.spec"
     
     def test_spec_includes_all_new_dependencies(self):
         """Test that spec file includes all new module dependencies."""
-        spec_file = PROJECT_ROOT / "alarmify.spec"
+        spec_file = PROJECT_ROOT / "charmed.spec"
         
         if not spec_file.exists():
-            pytest.skip("alarmify.spec not found")
+            pytest.skip("charmed.spec not found")
         
         content = spec_file.read_text(encoding='utf-8')
         
@@ -290,7 +290,7 @@ class TestInstallerCreation:
         if not OUTPUT_DIR.exists():
             pytest.skip("Output directory does not exist - installer not built")
         
-        installer_files = list(OUTPUT_DIR.glob("AlarmifySetup*.exe"))
+        installer_files = list(OUTPUT_DIR.glob("CharmedSetup*.exe"))
         
         assert len(installer_files) > 0, "No installer file found in Output directory"
         

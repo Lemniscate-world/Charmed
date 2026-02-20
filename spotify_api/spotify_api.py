@@ -1,5 +1,5 @@
 """
-spotify_api.py - Thread-safe Spotify API wrapper for Alarmify
+spotify_api.py - Thread-safe Spotify API wrapper for Charmed
 
 This module provides two classes for Spotify API interactions:
 
@@ -199,7 +199,7 @@ class SpotifyAPI:
                 self.end_headers()
                 self.wfile.write(
                     b"<html><body><h1>Authentication successful!</h1>"
-                    b"<p>You can close this window and return to Alarmify.</p>"
+                    b"<p>You can close this window and return to Charmed.</p>"
                     b"</body></html>"
                 )
 
@@ -496,7 +496,7 @@ class SpotifyAPI:
                     if 'premium' in error_msg or 'premium_required' in error_msg:
                         raise RuntimeError(
                             'Playback requires Spotify Premium.\n\n'
-                            'Please upgrade to Spotify Premium to use Alarmify.\n'
+                            'Please upgrade to Spotify Premium to use Charmed.\n'
                             'Visit: https://www.spotify.com/premium'
                         )
                     else:
@@ -562,7 +562,7 @@ class SpotifyAPI:
                     if 'premium' in error_msg or 'premium_required' in error_msg:
                         raise RuntimeError(
                             'Playback requires Spotify Premium.\n\n'
-                            'Please upgrade to Spotify Premium to use Alarmify.\n'
+                            'Please upgrade to Spotify Premium to use Charmed.\n'
                             'Visit: https://www.spotify.com/premium'
                         )
                     else:

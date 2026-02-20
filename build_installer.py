@@ -1,5 +1,5 @@
 """
-build_installer.py - Build script for Alarmify Windows installer
+build_installer.py - Build script for Charmed Windows installer
 
 This script automates the complete build process:
 1. Cleans previous build artifacts
@@ -12,8 +12,8 @@ Usage:
     python build_installer.py [--skip-tests] [--skip-inno]
 
 Output:
-    dist/Alarmify.exe - Standalone Windows executable
-    Output/AlarmifySetup-*.exe - Windows installer
+    dist/Charmed.exe - Standalone Windows executable
+    Output/CharmedSetup-*.exe - Windows installer
 """
 
 import subprocess  # Run external commands
@@ -143,7 +143,7 @@ def run_pyinstaller(script_dir):
         Path to the created executable
     """
     log_info("\n[2/5] Running PyInstaller...")
-    spec_file = script_dir / "alarmify.spec"
+    spec_file = script_dir / "charmed.spec"
     
     if not spec_file.exists():
         log_error(f"Spec file not found: {spec_file}")
@@ -161,7 +161,7 @@ def run_pyinstaller(script_dir):
         log_error(f"PyInstaller failed with return code: {result.returncode}")
         return None
     
-    exe_path = script_dir / "dist" / "Alarmify.exe"
+    exe_path = script_dir / "dist" / "Charmed.exe"
     
     if exe_path.exists():
         size_mb = exe_path.stat().st_size / (1024 * 1024)
@@ -257,7 +257,7 @@ def run_inno_setup(script_dir, iscc_path):
     
     # Find the created installer
     output_dir = script_dir / "Output"
-    installer_files = list(output_dir.glob("AlarmifySetup*.exe"))
+    installer_files = list(output_dir.glob("CharmedSetup*.exe"))
     
     if installer_files:
         installer_path = installer_files[0]
@@ -293,10 +293,10 @@ def verify_build(exe_path, installer_path):
 
 
 def main():
-    """Build the Alarmify Windows executable and installer."""
+    """Build the Charmed Windows executable and installer."""
     
     # Parse command-line arguments
-    parser = argparse.ArgumentParser(description="Build Alarmify installer")
+    parser = argparse.ArgumentParser(description="Build Charmed installer")
     parser.add_argument(
         "--skip-tests",
         action="store_true",
@@ -310,7 +310,7 @@ def main():
     args = parser.parse_args()
     
     log_info("=" * 60)
-    log_info("Building Alarmify Windows Installer")
+    log_info("Building Charmed Windows Installer")
     log_info("=" * 60)
     
     # Get script directory (where build_installer.py is located)

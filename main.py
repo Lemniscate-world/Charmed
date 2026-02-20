@@ -44,7 +44,7 @@ logger = get_logger(__name__)
 
 def is_first_run():
     """
-    Check if this is the first time running Alarmify.
+    Check if this is the first time running Charmed.
     
     Returns:
         bool: True if first run, False otherwise
@@ -69,7 +69,7 @@ def is_first_run():
 
 def main():
     setup_logging()
-    logger.info('Starting Alarmify application with Charm UI design')
+    logger.info('Starting Charmed application with Charm UI design')
     
     sys.excepthook = exception_hook
     
@@ -81,9 +81,9 @@ def main():
         app = QtWidgets.QApplication(sys.argv)
         app.setQuitOnLastWindowClosed(False)
         
-        app.setApplicationName('Alarmify')
-        app.setApplicationDisplayName('Alarmify - Spotify Alarm Clock')
-        app.setOrganizationName('Alarmify')
+        app.setApplicationName('Charmed')
+        app.setApplicationDisplayName('Charmed - Spotify Alarm Clock')
+        app.setOrganizationName('Charmed')
         
         # Set default font with proper fallback
         from PyQt5.QtGui import QFont

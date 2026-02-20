@@ -1,5 +1,5 @@
 """
-alarm.py - Alarm scheduling module for Alarmify
+alarm.py - Alarm scheduling module for Charmed
 
 This module provides the Alarm class for scheduling playlist alarms.
 Uses the 'schedule' library for daily recurring tasks and runs
@@ -50,546 +50,22 @@ import re
 import json
 import os
 from pathlib import Path
-from dataclasses import dataclass, asdict
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from logging_config import get_logger
-from device_wake_manager import DeviceWakeManager
 
 logger = get_logger(__name__)
 
 try:
-    from PyQt5.QtCore import QTimer, QObject, pyqtSignal
+    from PyQt5.QtCore import QTimer, QObject, pyqtSignal, QUrl
+    from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
     logger.warning("PyQt5 not available - fade-in feature will not be available")
 
 
-class AlarmHistory:
-    """
-    Manager for alarm history and statistics tracking.
-    
-    Tracks alarm triggers, dismissals, snoozes, and success/failure status
-    for statistical analysis and pattern recognition.
-    """
-    
-    def __init__(self, history_file: Optional[Path] = None):
-        """
-        Initialize alarm history manager.
-        
-        Args:
-            history_file: Path to history JSON file (default: alarm_history.json in user directory).
-        """
-        if history_file is None:
-            app_dir = Path.home() / '.alarmify'
-            app_dir.mkdir(parents=True, exist_ok=True)
-            history_file = app_dir / 'alarm_history.json'
-        
-        self.history_file = history_file
-        self.history = []
-        self._load_history()
-        logger.info(f'Alarm history manager initialized with file: {self.history_file}')
-    
-    def _load_history(self):
-        """Load alarm history from JSON file."""
-        if not self.history_file.exists():
-            logger.info('No history file found, starting fresh')
-            return
-        
-        try:
-            with open(self.history_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                self.history = data.get('history', [])
-            logger.info(f'Loaded {len(self.history)} history entries')
-        except Exception as e:
-            logger.error(f'Failed to load history: {e}', exc_info=True)
-            self.history = []
-    
-    def _save_history(self):
-        """Save alarm history to JSON file."""
-        try:
-            data = {'history': self.history}
-            with open(self.history_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            logger.debug(f'Saved {len(self.history)} history entries')
-        except Exception as e:
-            logger.error(f'Failed to save history: {e}', exc_info=True)
-    
-    def record_alarm_trigger(self, alarm_data, success=True, error_message=None):
-        """
-        Record an alarm trigger event.
-        
-        Args:
-            alarm_data: Dictionary with alarm details (time or trigger_time, playlist_name, volume, etc).
-            success: Whether the alarm triggered successfully.
-            error_message: Error message if alarm failed (optional).
-        """
-        trigger_time = alarm_data.get('time') or alarm_data.get('trigger_time', 'Unknown')
-        
-        entry = {
-            'timestamp': datetime.now().isoformat(),
-            'trigger_time': trigger_time,
-            'playlist_name': alarm_data.get('playlist_name', 'Unknown'),
-            'playlist_uri': alarm_data.get('playlist_uri', ''),
-            'volume': alarm_data.get('volume', 80),
-            'fade_in_enabled': alarm_data.get('fade_in_enabled', False),
-            'fade_in_duration': alarm_data.get('fade_in_duration', 10),
-            'day_of_week': datetime.now().strftime('%A'),
-            'success': success,
-            'error_message': error_message,
-            'snoozed': False,
-            'snooze_count': 0,
-            'dismissed': False,
-            'dismiss_time': None
-        }
-        
-        self.history.append(entry)
-        self._save_history()
-        logger.info(f'Recorded alarm trigger: {entry["trigger_time"]} - Success: {success}')
-    
-    def record_snooze(self, alarm_data, snooze_duration):
-        """
-        Record a snooze event for the most recent alarm.
-        
-        Args:
-            alarm_data: Dictionary with alarm details.
-            snooze_duration: Duration of snooze in minutes.
-        """
-        # Find the most recent alarm entry
-        if not self.history:
-            return
-        
-        # Look for most recent matching alarm
-        for entry in reversed(self.history):
-            if (entry.get('playlist_name') == alarm_data.get('playlist_name') and
-                not entry.get('dismissed', False)):
-                entry['snoozed'] = True
-                entry['snooze_count'] = entry.get('snooze_count', 0) + 1
-                entry['snooze_duration'] = snooze_duration
-                self._save_history()
-                logger.info(f'Recorded snooze: {snooze_duration}min for alarm at {entry["trigger_time"]}')
-                break
-    
-    def record_dismiss(self, alarm_data):
-        """
-        Record an alarm dismissal.
-        
-        Args:
-            alarm_data: Dictionary with alarm details.
-        """
-        if not self.history:
-            return
-        
-        # Find the most recent matching alarm
-        for entry in reversed(self.history):
-            if (entry.get('playlist_name') == alarm_data.get('playlist_name') and
-                not entry.get('dismissed', False)):
-                entry['dismissed'] = True
-                entry['dismiss_time'] = datetime.now().isoformat()
-                self._save_history()
-                logger.info(f'Recorded dismissal for alarm at {entry["trigger_time"]}')
-                break
-    
-    def get_history(self, limit=None, start_date=None, end_date=None):
-        """
-        Get alarm history with optional filtering.
-        
-        Args:
-            limit: Maximum number of entries to return (most recent first).
-            start_date: Filter entries after this date (datetime or ISO string).
-            end_date: Filter entries before this date (datetime or ISO string).
-        
-        Returns:
-            list: List of history entry dictionaries.
-        """
-        filtered = self.history.copy()
-        
-        # Apply date filters
-        if start_date or end_date:
-            if isinstance(start_date, str):
-                start_date = datetime.fromisoformat(start_date)
-            if isinstance(end_date, str):
-                end_date = datetime.fromisoformat(end_date)
-            
-            filtered = [
-                entry for entry in filtered
-                if (not start_date or datetime.fromisoformat(entry['timestamp']) >= start_date) and
-                   (not end_date or datetime.fromisoformat(entry['timestamp']) <= end_date)
-            ]
-        
-        # Sort by timestamp descending (most recent first)
-        filtered.sort(key=lambda x: x['timestamp'], reverse=True)
-        
-        # Apply limit
-        if limit:
-            filtered = filtered[:limit]
-        
-        return filtered
-    
-    def get_statistics(self, days=30):
-        """
-        Calculate statistics for alarm history.
-        
-        Args:
-            days: Number of days to analyze (default 30).
-        
-        Returns:
-            dict: Statistics including success rate, average snoozes, wake patterns, etc.
-        """
-        cutoff = datetime.now() - timedelta(days=days)
-        recent = [
-            entry for entry in self.history
-            if datetime.fromisoformat(entry['timestamp']) >= cutoff
-        ]
-        
-        if not recent:
-            return {
-                'total_alarms': 0,
-                'success_rate': 0.0,
-                'failure_count': 0,
-                'avg_snooze_count': 0.0,
-                'total_snoozes': 0,
-                'most_snoozed_time': None,
-                'most_successful_time': None,
-                'wake_patterns': {},
-                'day_distribution': {},
-                'favorite_playlists': {},
-                'fade_in_usage': 0.0
-            }
-        
-        total = len(recent)
-        successful = sum(1 for e in recent if e.get('success', False))
-        failed = total - successful
-        
-        total_snoozes = sum(e.get('snooze_count', 0) for e in recent)
-        avg_snooze = total_snoozes / total if total > 0 else 0.0
-        
-        # Analyze wake patterns by hour
-        wake_patterns = {}
-        for entry in recent:
-            time_str = entry.get('trigger_time', '00:00')
-            hour = time_str.split(':')[0] if ':' in time_str else '00'
-            wake_patterns[hour] = wake_patterns.get(hour, 0) + 1
-        
-        # Day distribution
-        day_distribution = {}
-        for entry in recent:
-            day = entry.get('day_of_week', 'Unknown')
-            day_distribution[day] = day_distribution.get(day, 0) + 1
-        
-        # Playlist usage
-        playlist_counts = {}
-        for entry in recent:
-            playlist = entry.get('playlist_name', 'Unknown')
-            playlist_counts[playlist] = playlist_counts.get(playlist, 0) + 1
-        
-        # Sort playlists by usage
-        favorite_playlists = dict(sorted(playlist_counts.items(), key=lambda x: x[1], reverse=True)[:5])
-        
-        # Fade-in usage percentage
-        fade_in_count = sum(1 for e in recent if e.get('fade_in_enabled', False))
-        fade_in_usage = (fade_in_count / total * 100) if total > 0 else 0.0
-        
-        # Find most snoozed time
-        time_snoozes = {}
-        for entry in recent:
-            if entry.get('snoozed', False):
-                time_str = entry.get('trigger_time', 'Unknown')
-                time_snoozes[time_str] = time_snoozes.get(time_str, 0) + entry.get('snooze_count', 0)
-        most_snoozed_time = max(time_snoozes.items(), key=lambda x: x[1])[0] if time_snoozes else None
-        
-        # Find most successful time (least snoozes, most dismissals)
-        time_success = {}
-        for entry in recent:
-            time_str = entry.get('trigger_time', 'Unknown')
-            if time_str not in time_success:
-                time_success[time_str] = {'triggers': 0, 'snoozes': 0}
-            time_success[time_str]['triggers'] += 1
-            time_success[time_str]['snoozes'] += entry.get('snooze_count', 0)
-        
-        most_successful_time = None
-        best_ratio = float('inf')
-        for time_str, stats in time_success.items():
-            if stats['triggers'] > 0:
-                ratio = stats['snoozes'] / stats['triggers']
-                if ratio < best_ratio:
-                    best_ratio = ratio
-                    most_successful_time = time_str
-        
-        return {
-            'total_alarms': total,
-            'success_rate': (successful / total * 100) if total > 0 else 0.0,
-            'failure_count': failed,
-            'avg_snooze_count': round(avg_snooze, 2),
-            'total_snoozes': total_snoozes,
-            'most_snoozed_time': most_snoozed_time,
-            'most_successful_time': most_successful_time,
-            'wake_patterns': wake_patterns,
-            'day_distribution': day_distribution,
-            'favorite_playlists': favorite_playlists,
-            'fade_in_usage': round(fade_in_usage, 1)
-        }
-    
-    def export_to_csv(self, output_path: Path):
-        """
-        Export alarm history to CSV file.
-        
-        Args:
-            output_path: Path to save CSV file.
-        
-        Returns:
-            bool: True if export successful, False otherwise.
-        """
-        try:
-            import csv
-            
-            with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
-                if not self.history:
-                    return True
-                
-                # Collect all unique field names from all entries
-                all_fields = set()
-                for entry in self.history:
-                    all_fields.update(entry.keys())
-                
-                fieldnames = sorted(list(all_fields))
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore')
-                
-                writer.writeheader()
-                for entry in self.history:
-                    writer.writerow(entry)
-            
-            logger.info(f'Exported {len(self.history)} entries to {output_path}')
-            return True
-        except Exception as e:
-            logger.error(f'Failed to export history to CSV: {e}', exc_info=True)
-            return False
-    
-    def export_to_json(self, output_path: Path):
-        """
-        Export alarm history to JSON file.
-        
-        Args:
-            output_path: Path to save JSON file.
-        
-        Returns:
-            bool: True if export successful, False otherwise.
-        """
-        try:
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump({'history': self.history}, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f'Exported {len(self.history)} entries to {output_path}')
-            return True
-        except Exception as e:
-            logger.error(f'Failed to export history to JSON: {e}', exc_info=True)
-            return False
-    
-    def clear_history(self):
-        """Clear all history entries."""
-        self.history = []
-        self._save_history()
-        logger.info('Cleared all alarm history')
-    
-    def clear_old_entries(self, days=90):
-        """
-        Clear history entries older than specified days.
-        
-        Args:
-            days: Keep entries newer than this many days (default 90).
-        """
-        cutoff = datetime.now() - timedelta(days=days)
-        original_count = len(self.history)
-        
-        self.history = [
-            entry for entry in self.history
-            if datetime.fromisoformat(entry['timestamp']) >= cutoff
-        ]
-        
-        removed = original_count - len(self.history)
-        self._save_history()
-        logger.info(f'Cleared {removed} old history entries (older than {days} days)')
 
-
-@dataclass
-class AlarmTemplate:
-    """
-    Template for alarm configuration.
-    
-    Stores reusable alarm settings that can be quickly applied when creating new alarms.
-    
-    Attributes:
-        name: Template name for identification.
-        time: Alarm time in HH:MM format.
-        playlist_name: Name of the Spotify playlist.
-        playlist_uri: Spotify URI of the playlist.
-        volume: Volume level 0-100.
-        fade_in_enabled: Whether to enable gradual volume fade-in.
-        fade_in_duration: Fade-in duration in minutes (5-30).
-        days: List of active weekday names or None for every day.
-    """
-    name: str
-    time: str
-    playlist_name: str
-    playlist_uri: str
-    volume: int = 80
-    fade_in_enabled: bool = False
-    fade_in_duration: int = 10
-    days: Optional[List[str]] = None
-    
-    def to_dict(self):
-        """Convert template to dictionary for JSON serialization."""
-        return asdict(self)
-    
-    @classmethod
-    def from_dict(cls, data):
-        """Create template from dictionary."""
-        return cls(**data)
-
-
-class TemplateManager:
-    """
-    Manager for alarm templates persistence.
-    
-    Handles loading and saving alarm templates to JSON file in the app directory.
-    """
-    
-    def __init__(self, templates_file: Optional[Path] = None):
-        """
-        Initialize template manager.
-        
-        Args:
-            templates_file: Path to templates JSON file (default: alarm_templates.json in app directory).
-        """
-        if templates_file is None:
-            app_dir = Path(__file__).resolve().parent
-            templates_file = app_dir / 'alarm_templates.json'
-        
-        self.templates_file = templates_file
-        logger.info(f'Template manager initialized with file: {self.templates_file}')
-    
-    def load_templates(self) -> List[AlarmTemplate]:
-        """
-        Load templates from JSON file.
-        
-        Returns:
-            List of AlarmTemplate objects.
-        """
-        if not self.templates_file.exists():
-            logger.info('No templates file found, returning empty list')
-            return []
-        
-        try:
-            with open(self.templates_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            templates = [AlarmTemplate.from_dict(t) for t in data]
-            logger.info(f'Loaded {len(templates)} templates from file')
-            return templates
-        except Exception as e:
-            logger.error(f'Failed to load templates: {e}', exc_info=True)
-            return []
-    
-    def save_templates(self, templates: List[AlarmTemplate]) -> bool:
-        """
-        Save templates to JSON file.
-        
-        Args:
-            templates: List of AlarmTemplate objects to save.
-        
-        Returns:
-            bool: True if save successful, False otherwise.
-        """
-        try:
-            data = [t.to_dict() for t in templates]
-            
-            with open(self.templates_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            
-            logger.info(f'Saved {len(templates)} templates to file')
-            return True
-        except Exception as e:
-            logger.error(f'Failed to save templates: {e}', exc_info=True)
-            return False
-    
-    def add_template(self, template: AlarmTemplate) -> bool:
-        """
-        Add a new template.
-        
-        Args:
-            template: AlarmTemplate to add.
-        
-        Returns:
-            bool: True if successful, False otherwise.
-        """
-        templates = self.load_templates()
-        
-        # Check for duplicate names
-        if any(t.name == template.name for t in templates):
-            logger.warning(f'Template with name "{template.name}" already exists')
-            return False
-        
-        templates.append(template)
-        return self.save_templates(templates)
-    
-    def update_template(self, old_name: str, template: AlarmTemplate) -> bool:
-        """
-        Update an existing template.
-        
-        Args:
-            old_name: Original name of template to update.
-            template: Updated AlarmTemplate.
-        
-        Returns:
-            bool: True if successful, False otherwise.
-        """
-        templates = self.load_templates()
-        
-        # Find and replace template
-        for i, t in enumerate(templates):
-            if t.name == old_name:
-                templates[i] = template
-                return self.save_templates(templates)
-        
-        logger.warning(f'Template "{old_name}" not found for update')
-        return False
-    
-    def delete_template(self, name: str) -> bool:
-        """
-        Delete a template by name.
-        
-        Args:
-            name: Name of template to delete.
-        
-        Returns:
-            bool: True if successful, False otherwise.
-        """
-        templates = self.load_templates()
-        original_count = len(templates)
-        
-        templates = [t for t in templates if t.name != name]
-        
-        if len(templates) == original_count:
-            logger.warning(f'Template "{name}" not found for deletion')
-            return False
-        
-        return self.save_templates(templates)
-    
-    def get_template(self, name: str) -> Optional[AlarmTemplate]:
-        """
-        Get a template by name.
-        
-        Args:
-            name: Name of template to retrieve.
-        
-        Returns:
-            AlarmTemplate if found, None otherwise.
-        """
-        templates = self.load_templates()
-        for t in templates:
-            if t.name == name:
-                return t
-        return None
+# Legacy AlarmHistory, AlarmTemplate, and TemplateManager removed for MVP cleanup
 
 
 # Snooze configuration
@@ -719,12 +195,13 @@ class Alarm:
         gui_app: Reference to GUI application for showing notifications.
     """
 
-    def __init__(self, gui_app=None):
+    def __init__(self, gui_app=None, snooze_state_file=None):
         """
         Initialize the alarm manager with empty alarm list.
 
         Args:
             gui_app: Reference to GUI application for showing notifications (optional).
+            snooze_state_file: Path to custom snooze state file (for testing).
         """
         logger.info('Initializing Alarm manager')
         self.alarms = []
@@ -734,11 +211,14 @@ class Alarm:
         self._alarms_lock = threading.Lock()
         self.gui_app = gui_app
         self.active_fade_controller = None
-        self.device_wake_manager = None
-        self.snooze_state_file = Path.home() / '.alarmify' / 'snooze_state.json'
-        self.history = AlarmHistory()
+        if snooze_state_file:
+            self.snooze_state_file = Path(snooze_state_file)
+        else:
+            self.snooze_state_file = Path.home() / '.charmed' / 'snooze_state.json'
+        
         self._ensure_state_directory()
         self._load_snooze_state()
+        self.player = None  # For local fallback playback
         logger.info("Alarm manager initialized")
 
     def set_alarm(self, time_str, playlist_name, playlist_uri, spotify_api, volume=80, 
@@ -1156,20 +636,9 @@ class Alarm:
                     'spotify_api': spotify_api
                 }
                 
-                # Record successful alarm trigger in history
-                self.history.record_alarm_trigger(alarm_data, success=True)
-                
                 self._show_notification('Alarm Success', success_msg, success=True, alarm_data=alarm_data)
                 logger.info(f"Successfully started playlist playback: {playlist_name}")
                 playback_succeeded = True
-                
-                # Start device health monitoring if alarm_id provided
-                if alarm_id and self.device_wake_manager:
-                    self.device_wake_manager.start_alarm_monitoring(
-                        alarm_id, playlist_uri, playlist_name, volume,
-                        spotify_api, fade_in_enabled, fade_in_duration
-                    )
-                
                 return
 
             except Exception as e:
@@ -1181,32 +650,41 @@ class Alarm:
                     logger.info(f"Retrying in {delay} seconds...")
                     time.sleep(delay)
                 else:
-                    failure_msg = self._get_user_friendly_error(error_msg, playlist_name)
-                    
-                    # Record failed alarm trigger in history
-                    alarm_data = {
-                        'playlist_uri': playlist_uri,
-                        'playlist_name': playlist_name,
-                        'volume': volume,
-                        'fade_in_enabled': fade_in_enabled,
-                        'fade_in_duration': fade_in_duration
-                    }
-                    self.history.record_alarm_trigger(alarm_data, success=False, error_message=error_msg)
-                    
                     self._show_notification('Alarm Failed', failure_msg, success=False)
                     logger.error(f"Alarm failed after {max_retries} attempts: {failure_msg}")
+                    
+                    # Trigger local fallback
+                    self._play_fallback_sound()
         
-        # If playback failed after all retries, show fallback notification via DeviceWakeManager
-        if not playback_succeeded and self.device_wake_manager:
-            alarm_data = {
-                'playlist_uri': playlist_uri,
-                'playlist_name': playlist_name,
-                'volume': volume,
-                'spotify_api': spotify_api,
-                'fade_in_enabled': fade_in_enabled,
-                'fade_in_duration': fade_in_duration
-            }
-            self.device_wake_manager._show_fallback_notification(alarm_data)
+        if not playback_succeeded:
+            self._play_fallback_sound()
+
+    def _play_fallback_sound(self):
+        """Play local fallback sound if Spotify fails."""
+        if not PYQT_AVAILABLE:
+            logger.error("Cannot play fallback: PyQt5 not available")
+            return
+
+        try:
+            # Fallback to system beep first for immediate feedback
+            from PyQt5.QtWidgets import QApplication
+            QApplication.beep()
+            
+            # Try to play alarm.wav if it exists in the app directory
+            app_dir = Path.home() / '.charmed'
+            sound_path = app_dir / 'alarm.wav'
+            
+            if sound_path.exists():
+                logger.info(f"Playing local fallback sound: {sound_path}")
+                self.player = QMediaPlayer()
+                self.player.setMedia(QMediaContent(QUrl.fromLocalFile(str(sound_path))))
+                self.player.setVolume(100)
+                self.player.play()
+            else:
+                logger.warning(f"No fallback sound file found at {sound_path}. Using system beep.")
+                QApplication.beep()
+        except Exception as e:
+            logger.error(f"Failed to play fallback sound: {e}")
 
     def _wake_spotify_device(self, spotify_api):
         """
@@ -1318,9 +796,9 @@ class Alarm:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
                 '⚠️ Spotify Premium required.\n\n'
-                'Alarmify requires Spotify Premium for playback control.\n'
+                'Charmed requires Spotify Premium for playback control.\n'
                 'Upgrade at: https://www.spotify.com/premium\n\n'
-                'Free users: Alarmify will show a notification instead.'
+                'Free users: Charmed will show a notification instead.'
             )
         elif 'no active device' in error_lower or 'device' in error_lower:
             return (
@@ -1332,7 +810,7 @@ class Alarm:
             return (
                 f'Failed to play "{playlist_name}"\n\n'
                 '⚠️ Authentication expired.\n'
-                'Please log in to Spotify again in the Alarmify app.'
+                'Please log in to Spotify again in the Charmed app.'
             )
         elif 'premium' in error_lower or 'restriction' in error_lower:
             return (

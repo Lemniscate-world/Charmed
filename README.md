@@ -1,8 +1,8 @@
-# Alarmify - Spotify Alarm Clock
+# Charmed - The Magical Spotify Alarm Ecosystem
 
-![Alarmify Logo](Logo%20First%20Draft.png)
+![Charmed Logo](Logo%20First%20Draft.png)
 
-A PyQt5-based desktop application that wakes you up with your favorite Spotify playlists. Set alarms to automatically play specific playlists at scheduled times with customizable volume control.
+A premium, cross-platform Spotify alarm ecosystem that makes mornings magical. Built on the Charmed design system with glassmorphism and smooth spring physics.
 
 ## Features
 
@@ -22,7 +22,7 @@ A PyQt5-based desktop application that wakes you up with your favorite Spotify p
 
 ### Main Window
 ![Main Window](docs/screenshots/main-window.png)
-*The main Alarmify interface showing playlist browser, alarm controls, and volume settings*
+*The main Charmed interface showing playlist browser, alarm controls, and volume settings*
 
 ### Settings Dialog
 ![Settings Dialog](docs/screenshots/settings-dialog.png)
@@ -45,7 +45,7 @@ A PyQt5-based desktop application that wakes you up with your favorite Spotify p
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd alarmify
+   cd charmed
    ```
 
 2. **Create and activate virtual environment**
@@ -64,7 +64,7 @@ A PyQt5-based desktop application that wakes you up with your favorite Spotify p
 4. **Configure Spotify API credentials**
    - Create a [Spotify Developer App](https://developer.spotify.com/dashboard)
    - Add `http://localhost:8888/callback` to your app's Redirect URIs
-   - Launch Alarmify and click the settings gear icon (⚙)
+   - Launch Charmed and click the settings gear icon (⚙)
    - Enter your Client ID, Client Secret, and Redirect URI
 
 5. **Run the application**
@@ -116,7 +116,7 @@ When an alarm triggers, you have flexible snooze options:
 - Snoozed alarms shown in Alarm Manager dialog
 
 **Persistent State:**
-- Snooze data saved to `~/.alarmify/snooze_state.json`
+- Snooze data saved to `~/.charmed/snooze_state.json`
 - Automatically restored on app restart
 - Expired snoozes cleaned up automatically
 
@@ -162,7 +162,7 @@ The fade-in feature gradually increases volume from 0% to your target volume ove
 ## Documentation
 
 - **[User Guide](docs/USER_GUIDE.md)** - Comprehensive step-by-step guide with screenshots
-- **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute to Alarmify
+- **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute to Charmed
 - **[Planning & Strategy](docs/PLANNING.md)** - Product roadmap, features, design system
 - **[Architecture Overview](AGENTS.md)** - Technical details for developers
 
@@ -290,7 +290,7 @@ The fade-in feature gradually increases volume from 0% to your target volume ove
 1. Close any other applications using port 8888
 2. Change the Redirect URI in both:
    - Spotify Developer Dashboard (e.g., to `http://localhost:8889/callback`)
-   - Alarmify settings dialog
+   - Charmed settings dialog
 3. Restart the application
 
 **Check Port Usage** (Windows):
@@ -333,7 +333,7 @@ netstat -ano | findstr :8888
 
 ### Thread Safety Implementation
 
-Alarmify implements comprehensive thread safety to prevent race conditions:
+Charmed implements comprehensive thread safety to prevent race conditions:
 
 - **SpotifyAPI Thread Safety** (`spotify_api/spotify_api.py`)
   - Reentrant lock (RLock) protects all API calls
@@ -370,7 +370,7 @@ python -m pytest tests/test_thread_safety.py -v
 ## Project Structure
 
 ```
-alarmify/
+charmed/
 ├── main.py                 # Application entry point
 ├── gui.py                  # Main window and UI components
 ├── alarm.py                # Alarm scheduling and management
@@ -410,10 +410,10 @@ python -m pytest tests/ --cov=. --cov-report=html
 PyInstaller spec file included for creating standalone executable:
 
 ```bash
-pyinstaller alarmify.spec
+pyinstaller charmed.spec
 ```
 
-The built application will be in `dist/alarmify/`.
+The built application will be in `dist/charmed/`.
 
 ## License
 
@@ -439,6 +439,6 @@ See [LICENSE](LICENSE) file for details.
 
 ## Support
 
-If you find Alarmify useful, please ⭐ star the repository!
+If you find Charmed useful, please ⭐ star the repository!
 
 For issues, feature requests, or contributions, see [CONTRIBUTING.md](CONTRIBUTING.md).

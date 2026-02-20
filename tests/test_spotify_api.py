@@ -209,6 +209,7 @@ class TestVolumeControl:
                 api = api_module.SpotifyAPI()
                 # Manually set the sp instance
                 api.sp = mock_sp_instance
+                mock_sp_instance.devices.return_value = {'devices': [{'is_active': True}]}
 
                 # Test clamping above 100
                 api.set_volume(150)

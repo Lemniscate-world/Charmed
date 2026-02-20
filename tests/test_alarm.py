@@ -28,7 +28,7 @@ import schedule
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from alarm import Alarm, AlarmTemplate, TemplateManager
+from alarm import Alarm
 
 
 class TestAlarmInit:
@@ -1298,256 +1298,8 @@ class TestFadeInController:
             pytest.skip("PyQt5 not available")
 
 
-class TestAlarmTemplate:
-    """Tests for AlarmTemplate dataclass - Phase 2."""
-    
-    def test_alarm_template_creation(self):
-        """Should create alarm template with all fields."""
-        template = AlarmTemplate(
-            name='Morning Alarm',
-            time='07:00',
-            playlist_name='Wake Up Mix',
-            playlist_uri='spotify:playlist:wake',
-            volume=75,
-            fade_in_enabled=True,
-            fade_in_duration=15,
-            days=['Monday', 'Wednesday', 'Friday']
-        )
-        
-        assert template.name == 'Morning Alarm'
-        assert template.time == '07:00'
-        assert template.playlist_name == 'Wake Up Mix'
-        assert template.volume == 75
-        assert template.fade_in_enabled is True
-        assert template.fade_in_duration == 15
-        assert template.days == ['Monday', 'Wednesday', 'Friday']
-    
-    def test_alarm_template_defaults(self):
-        """Should use default values for optional fields."""
-        template = AlarmTemplate(
-            name='Simple',
-            time='08:00',
-            playlist_name='Playlist',
-            playlist_uri='spotify:playlist:test'
-        )
-        
-        assert template.volume == 80
-        assert template.fade_in_enabled is False
-        assert template.fade_in_duration == 10
-        assert template.days is None
-    
-    def test_alarm_template_to_dict(self):
-        """Should convert template to dictionary."""
-        template = AlarmTemplate(
-            name='Test',
-            time='09:00',
-            playlist_name='Test Playlist',
-            playlist_uri='spotify:playlist:test',
-            volume=85
-        )
-        
-        template_dict = template.to_dict()
-        
-        assert template_dict['name'] == 'Test'
-        assert template_dict['time'] == '09:00'
-        assert template_dict['volume'] == 85
-    
-    def test_alarm_template_from_dict(self):
-        """Should create template from dictionary."""
-        data = {
-            'name': 'From Dict',
-            'time': '10:00',
-            'playlist_name': 'Dict Playlist',
-            'playlist_uri': 'spotify:playlist:dict',
-            'volume': 70,
-            'fade_in_enabled': True,
-            'fade_in_duration': 20,
-            'days': ['Tuesday', 'Thursday']
-        }
-        
-        template = AlarmTemplate.from_dict(data)
-        
-        assert template.name == 'From Dict'
-        assert template.fade_in_enabled is True
-        assert template.days == ['Tuesday', 'Thursday']
 
-
-class TestTemplateManager:
-    """Tests for TemplateManager class - Phase 2."""
-    
-    def test_template_manager_initialization(self, tmp_path):
-        """Should initialize with default or custom path."""
-        templates_file = tmp_path / 'templates.json'
-        manager = TemplateManager(templates_file)
-        
-        assert manager.templates_file == templates_file
-    
-    def test_load_templates_empty(self, tmp_path):
-        """Should return empty list when no templates file exists."""
-        templates_file = tmp_path / 'templates.json'
-        manager = TemplateManager(templates_file)
-        
-        templates = manager.load_templates()
-        
-        assert templates == []
-    
-    def test_save_and_load_templates(self, tmp_path):
-        """Should save and load templates correctly."""
-        templates_file = tmp_path / 'templates.json'
-        manager = TemplateManager(templates_file)
-        
-        template1 = AlarmTemplate(
-            name='Morning',
-            time='07:00',
-            playlist_name='Morning Mix',
-            playlist_uri='spotify:playlist:morning',
-            volume=75
-        )
-        
-        template2 = AlarmTemplate(
-            name='Evening',
-            time='18:00',
-            playlist_name='Evening Chill',
-            playlist_uri='spotify:playlist:evening',
-            volume=60,
-            fade_in_enabled=True,
-            fade_in_duration=20
-        )
-        
-        success = manager.save_templates([template1, template2])
-        assert success is True
-        
-        loaded = manager.load_templates()
-        assert len(loaded) == 2
-        assert loaded[0].name == 'Morning'
-        assert loaded[1].name == 'Evening'
-        assert loaded[1].fade_in_enabled is True
-    
-    def test_add_template(self, tmp_path):
-        """Should add new template."""
-        templates_file = tmp_path / 'templates.json'
-        manager = TemplateManager(templates_file)
-        
-        template = AlarmTemplate(
-            name='New Template',
-            time='08:00',
-            playlist_name='New Playlist',
-            playlist_uri='spotify:playlist:new'
-        )
-        
-        success = manager.add_template(template)
-        assert success is True
-        
-        templates = manager.load_templates()
-        assert len(templates) == 1
-        assert templates[0].name == 'New Template'
-    
-    def test_add_template_duplicate_name(self, tmp_path):
-        """Should reject duplicate template names."""
-        templates_file = tmp_path / 'templates.json'
-        manager = TemplateManager(templates_file)
-        
-        template1 = AlarmTemplate(
-            name='Duplicate',
-            time='08:00',
-            playlist_name='Playlist 1',
-            playlist_uri='spotify:playlist:1'
-        )
-        
-        template2 = AlarmTemplate(
-            name='Duplicate',
-            time='09:00',
-            playlist_name='Playlist 2',
-            playlist_uri='spotify:playlist:2'
-        )
-        
-        manager.add_template(template1)
-        success = manager.add_template(template2)
-        
-        assert success is False
-        templates = manager.load_templates()
-        assert len(templates) == 1
-    
-    def test_update_template(self, tmp_path):
-        """Should update existing template."""
-        templates_file = tmp_path / 'templates.json'
-        manager = TemplateManager(templates_file)
-        
-        original = AlarmTemplate(
-            name='Original',
-            time='08:00',
-            playlist_name='Original Playlist',
-            playlist_uri='spotify:playlist:original',
-            volume=70
-        )
-        
-        manager.add_template(original)
-        
-        updated = AlarmTemplate(
-            name='Updated',
-            time='09:00',
-            playlist_name='Updated Playlist',
-            playlist_uri='spotify:playlist:updated',
-            volume=80
-        )
-        
-        success = manager.update_template('Original', updated)
-        assert success is True
-        
-        templates = manager.load_templates()
-        assert len(templates) == 1
-        assert templates[0].name == 'Updated'
-        assert templates[0].volume == 80
-    
-    def test_delete_template(self, tmp_path):
-        """Should delete template by name."""
-        templates_file = tmp_path / 'templates.json'
-        manager = TemplateManager(templates_file)
-        
-        template1 = AlarmTemplate(
-            name='Keep',
-            time='08:00',
-            playlist_name='Keep Playlist',
-            playlist_uri='spotify:playlist:keep'
-        )
-        
-        template2 = AlarmTemplate(
-            name='Delete',
-            time='09:00',
-            playlist_name='Delete Playlist',
-            playlist_uri='spotify:playlist:delete'
-        )
-        
-        manager.add_template(template1)
-        manager.add_template(template2)
-        
-        success = manager.delete_template('Delete')
-        assert success is True
-        
-        templates = manager.load_templates()
-        assert len(templates) == 1
-        assert templates[0].name == 'Keep'
-    
-    def test_get_template(self, tmp_path):
-        """Should retrieve template by name."""
-        templates_file = tmp_path / 'templates.json'
-        manager = TemplateManager(templates_file)
-        
-        template = AlarmTemplate(
-            name='Find Me',
-            time='10:00',
-            playlist_name='Find Playlist',
-            playlist_uri='spotify:playlist:find'
-        )
-        
-        manager.add_template(template)
-        
-        found = manager.get_template('Find Me')
-        assert found is not None
-        assert found.name == 'Find Me'
-        
-        not_found = manager.get_template('Not Exist')
-        assert not_found is None
+# Legacy Template tests removed for MVP
 
 
 class TestDaySpecificScheduling:
@@ -1735,9 +1487,10 @@ class TestPlaylistURIRefactoring:
             assert alarms[i]['playlist'] == name
             assert alarms[i]['playlist_uri'] == uri
     
-    def test_snooze_preserves_uri_for_playback(self):
+    def test_snooze_preserves_uri_for_playback(self, tmp_path):
         """Snoozed alarm should preserve URI for rescheduled playback."""
-        alarm = Alarm()
+        snooze_file = tmp_path / 'snooze.json'
+        alarm = Alarm(snooze_state_file=snooze_file)
         mock_api = Mock()
         
         playlist_uri = 'spotify:playlist:snooze_test_uri'
@@ -1952,7 +1705,7 @@ class TestAlarmHistory:
         history = AlarmHistory()
         
         assert history.history_file is not None
-        assert history.history_file.parent == Path.home() / '.alarmify'
+        assert history.history_file.parent == Path.home() / '.charmed'
     
     def test_record_alarm_trigger_success(self, tmp_path):
         """record_alarm_trigger should record successful alarm."""

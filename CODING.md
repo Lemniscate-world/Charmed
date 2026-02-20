@@ -2,7 +2,7 @@
 
 ## 🎯 Purpose
 
-This document provides comprehensive development guidelines for Alarmify, covering architecture patterns, code quality standards, testing strategies, and PyQt5-specific best practices.
+This document provides comprehensive development guidelines for Charmed, covering architecture patterns, code quality standards, testing strategies, and PyQt5-specific best practices.
 
 ---
 
@@ -56,7 +56,7 @@ class AlarmWithUI:
         pass
 ```
 
-**Application in Alarmify:**
+**Application in Charmed:**
 - `alarm.py`: Alarm scheduling logic only
 - `gui.py`: UI components only
 - `spotify_api/spotify_api.py`: API interactions only
@@ -81,7 +81,7 @@ class MockSpotifyAPI(SpotifyAPI):
         return True  # Mock authentication
 ```
 
-**Application in Alarmify:**
+**Application in Charmed:**
 - Use inheritance for test modes: `MockSpotifyAPI` extends `SpotifyAPI`
 - Extend GUI components: Custom widgets inherit from Qt base classes
 - Plugin architecture: Design for future extensions
@@ -101,7 +101,7 @@ spotify_api = MockSpotifyAPI()  # Testing
 playlists = spotify_api.get_playlists_detailed()
 ```
 
-**Application in Alarmify:**
+**Application in Charmed:**
 - `ThreadSafeSpotifyAPI` wraps `SpotifyAPI` transparently
 - Mock implementations match real API interface
 - Widget inheritance maintains Qt contracts
@@ -127,7 +127,7 @@ class Alarm:
         self.playback = playback  # Only needs playback
 ```
 
-**Application in Alarmify:**
+**Application in Charmed:**
 - Keep API methods focused and minimal
 - Don't force dialogs to implement unnecessary methods
 - Separate concerns in widget interfaces
@@ -151,7 +151,7 @@ alarm = Alarm(spotify_api)  # Production
 alarm = Alarm(mock_api)     # Testing
 ```
 
-**Application in Alarmify:**
+**Application in Charmed:**
 - Pass `spotify_api` instance to `Alarm` (dependency injection)
 - Pass `gui_app` reference for notifications (loose coupling)
 - Use abstract logging interface (`get_logger`)
@@ -234,11 +234,11 @@ def set_alarm(self, time, playlist_name, playlist_uri,
 
 ### Code Comments
 
-**Alarmify style: Module/class docstrings + inline comments for complex logic:**
+**Charmed style: Module/class docstrings + inline comments for complex logic:**
 
 ```python
 """
-alarm.py - Alarm scheduling module for Alarmify
+alarm.py - Alarm scheduling module for Charmed
 
 This module provides the Alarm class for scheduling playlist alarms.
 Uses the 'schedule' library for daily recurring tasks.
@@ -886,7 +886,7 @@ if __name__ == '__main__':
 
 ### Separation of Concerns
 
-**Alarmify architecture:**
+**Charmed architecture:**
 ```
 ┌─────────────────────────────────────────┐
 │              main.py                     │  Entry point
@@ -946,7 +946,7 @@ class Config:
     """Application configuration."""
     
     # Paths
-    APP_DIR = Path.home() / '.alarmify'
+    APP_DIR = Path.home() / '.charmed'
     LOG_DIR = APP_DIR / 'logs'
     CACHE_DIR = APP_DIR / 'cache'
     
@@ -984,15 +984,15 @@ class Config:
 **Use appropriate exception types:**
 ```python
 # Define custom exceptions
-class AlarmifyException(Exception):
-    """Base exception for Alarmify."""
+class CharmedException(Exception):
+    """Base exception for Charmed."""
     pass
 
-class SpotifyAuthenticationError(AlarmifyException):
+class SpotifyAuthenticationError(CharmedException):
     """Raised when Spotify authentication fails."""
     pass
 
-class InvalidTimeFormatError(AlarmifyException):
+class InvalidTimeFormatError(CharmedException):
     """Raised when time format is invalid."""
     pass
 

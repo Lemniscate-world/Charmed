@@ -1,2 +1,2 @@
-# Test package for Alarmify
+# Test package for Charmed
 
