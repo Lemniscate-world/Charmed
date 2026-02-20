@@ -1,4 +1,39 @@
 # Session Summary — 2026-02-20
+**Editor**: BLACKBOXAI
+
+## 🇫🇷 Français
+**Ce qui a été fait** : 
+- Mise à jour du README.md avec les nouvelles fonctionnalités et suppressions des références aux images/logo absents.
+- Ajout de la fonctionnalité "Local Fallback Alarm" dans la documentation.
+- Référence aux fichiers de sécurité et méthodologies AI.
+
+**Initiatives données** : 
+- Nettoyage de la documentation après suppression du code mort.
+
+**Fichiers modifiés** : 
+- README.md
+
+**Étapes suivantes** : 
+- Commit des modifications
+
+## 🇬🇧 English
+**What was done**: 
+- Updated README.md with new features and removed references to missing images/logo.
+- Added Local Fallback Alarm feature documentation.
+- Referenced security files and AI methodologies.
+
+**Initiatives given**: 
+- Documentation cleanup after dead code removal.
+
+**Files changed**: 
+- README.md
+
+**Next steps**: 
+- Commit the changes
+
+---
+
+# Session Summary — 2026-02-20
 **Editor**: Antigravity
 
 ## 🇫🇷 Français

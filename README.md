@@ -1,7 +1,5 @@
 # Charmed - The Magical Spotify Alarm Ecosystem
 
-![Charmed Logo](Logo%20First%20Draft.png)
-
 A premium, cross-platform Spotify alarm ecosystem that makes mornings magical. Built on the Charmed design system with glassmorphism and smooth spring physics.
 
 ## Features
@@ -17,20 +15,7 @@ A premium, cross-platform Spotify alarm ecosystem that makes mornings magical. B
 - 🖥️ **Device Management** - Automatic playback on your active Spotify device
 - 📊 **Alarm Manager** - View, edit, and delete scheduled alarms
 - 😴 **Snooze Functionality** - Configurable snooze intervals (5/10/15 minutes) with persistent state
-
-## Screenshots
-
-### Main Window
-![Main Window](docs/screenshots/main-window.png)
-*The main Charmed interface showing playlist browser, alarm controls, and volume settings*
-
-### Settings Dialog
-![Settings Dialog](docs/screenshots/settings-dialog.png)
-*Configure your Spotify API credentials*
-
-### Alarm Manager
-![Alarm Manager](docs/screenshots/alarm-manager.png)
-*View and manage all scheduled alarms*
+- 🔄 **Local Fallback Alarm** - Built-in alarm sound using QMediaPlayer when Spotify is unavailable
 
 ## Quick Start
 
@@ -149,6 +134,22 @@ The fade-in feature gradually increases volume from 0% to your target volume ove
 - **15-20 minutes**: Most users, natural wake-up
 - **25-30 minutes**: Deep sleepers or gentle meditation wake-up
 
+### Local Fallback Alarm
+
+Charmed includes a built-in local alarm that plays when Spotify is unavailable. This ensures you'll never miss an alarm even if:
+
+- No Spotify device is active
+- Spotify Premium has expired
+- Network connectivity issues occur
+
+The fallback alarm uses the system's default sound or a bundled alarm tone via QMediaPlayer.
+
+**Features:**
+- Automatic activation when Spotify playback fails
+- Configurable fallback volume
+- Persistent until dismissed
+- Works completely offline
+
 ### Tips for Best Experience
 
 - **Keep Spotify Open**: Leave Spotify desktop/mobile app open on a device
@@ -158,6 +159,7 @@ The fade-in feature gradually increases volume from 0% to your target volume ove
 - **Gentle Wake-Up**: Enable 15-20 minute fade-in for the most natural wake-up experience
 - **Playlist Length**: Use playlists with multiple songs for gradual wake-up
 - **Premium Account**: Spotify Premium is required for playback API access
+- **Fallback Ready**: The local fallback alarm has your back if Spotify fails
 
 ## Documentation
 
@@ -165,6 +167,8 @@ The fade-in feature gradually increases volume from 0% to your target volume ove
 - **[Contributing Guidelines](CONTRIBUTING.md)** - How to contribute to Charmed
 - **[Planning & Strategy](docs/PLANNING.md)** - Product roadmap, features, design system
 - **[Architecture Overview](AGENTS.md)** - Technical details for developers
+- **[AI Guidelines](AI_GUIDELINES.md)** - Development methodology and coding standards
+- **[Security Policy](security.md)** - Security practices and vulnerability reporting
 
 ## Troubleshooting
 
@@ -207,6 +211,7 @@ The fade-in feature gradually increases volume from 0% to your target volume ove
 2. Play any song briefly to activate the device
 3. Your device will remain active for future alarms
 4. Consider keeping Spotify desktop app running in background
+5. **Don't worry**: The local fallback alarm will play if Spotify fails
 
 **Pro Tip**: Use Spotify Connect to select specific playback devices in advance.
 
@@ -217,8 +222,8 @@ The fade-in feature gradually increases volume from 0% to your target volume ove
 **Checklist**:
 - ✓ Application must be running (don't close the window)
 - ✓ Computer must not be in sleep/hibernation mode
-- ✓ At least one Spotify device must be active
-- ✓ Spotify Premium account is required
+- ✓ At least one Spotify device must be active (or fallback alarm will play)
+- ✓ Spotify Premium account is required for Spotify playback
 - ✓ Check "Manage Alarms" to confirm alarm is scheduled
 - ✓ System time is correct (alarms use 24-hour format)
 
@@ -226,7 +231,7 @@ The fade-in feature gradually increases volume from 0% to your target volume ove
 1. Open "Manage Alarms" to verify the alarm is listed
 2. Check the console/terminal for error messages
 3. Set a test alarm for 1-2 minutes from now
-4. Ensure Spotify is open and a device is active
+4. Ensure Spotify is open and a device is active (or test the fallback alarm)
 
 #### Playlists Don't Load
 
@@ -264,6 +269,7 @@ The fade-in feature gradually increases volume from 0% to your target volume ove
 2. Try manually adjusting volume in Spotify to test device capability
 3. Some devices (e.g., browsers, some smart speakers) don't support API volume control
 4. Use desktop Spotify app or mobile app for best volume control support
+5. The fallback alarm has its own volume control independent of Spotify
 
 #### Application Crashes or Freezes
 
@@ -317,7 +323,7 @@ netstat -ano | findstr :8888
 | `Spotify credentials not set` | Missing API credentials | Configure credentials in Settings dialog |
 | `Failed to receive authorization code` | OAuth callback failed | Check Redirect URI matches dashboard settings |
 | `Spotify client not authenticated` | Not logged in | Click "Login to Spotify" button |
-| `No active device` | No Spotify device available | Open Spotify on any device |
+| `No active device` | No Spotify device available | Open Spotify on any device, or fallback alarm will play |
 | `Playlist not found` | Playlist was deleted/renamed | Select a different playlist |
 | `Could not load playlists` | API request failed | Check internet connection, re-authenticate |
 | `Could not save credentials` | File system error | Check directory permissions |
@@ -351,6 +357,7 @@ Charmed implements comprehensive thread safety to prevent race conditions:
 2. Multiple Alarms: Multiple alarms triggering simultaneously
 3. Manual Playback + Alarm: User interaction during alarm trigger
 4. Settings Changes: Credential updates during active scheduling
+5. Local Fallback: Fallback alarm plays independently of Spotify
 
 ### Testing Thread Safety
 
@@ -366,6 +373,7 @@ python -m pytest tests/test_thread_safety.py -v
 - **API Library**: Spotipy (Spotify Web API wrapper)
 - **Scheduler**: schedule library with threading
 - **Environment**: python-dotenv for configuration
+- **Local Audio**: QMediaPlayer for fallback alarm
 
 ## Project Structure
 
@@ -377,10 +385,13 @@ charmed/
 ├── spotify_api/
 │   └── spotify_api.py     # Thread-safe Spotify API wrapper
 ├── tests/                  # Test suite
-├── docs/                   # Documentation and screenshots
+├── docs/                   # Documentation
 ├── requirements.txt        # Python dependencies
 ├── spotify_style.qss       # Qt stylesheet for Spotify theme
-└── .env                    # Spotify credentials (not in git)
+├── .env                    # Spotify credentials (not in git)
+├── security.md             # Security policies
+├── AI_GUIDELINES.md        # Development methodology
+└── SESSION_SUMMARY.md      # Session history
 ```
 
 ## Development
@@ -391,6 +402,17 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 - Testing guidelines
 - Pull request process
 - Architecture decisions
+
+### Security Development
+
+This project follows strict security practices:
+
+- **Static Analysis**: CodeQL, SonarQube, and Codacy integration
+- **Security Scanning**: bandit and safety before every commit
+- **Advanced Testing**: Fuzzing (AFL), Load Testing (Locust), Mutation Testing (Stryker)
+- **Policy as Code**: Automated security compliance
+
+See [security.md](security.md) for full security policies and [AI_GUIDELINES.md](AI_GUIDELINES.md) for development methodology.
 
 ## Running Tests
 
@@ -405,6 +427,8 @@ python -m pytest tests/test_alarm.py -v
 python -m pytest tests/ --cov=. --cov-report=html
 ```
 
+**Test Results**: 24 passing tests (Spotify + Local Fallback)
+
 ## Building Executable
 
 PyInstaller spec file included for creating standalone executable:
@@ -414,6 +438,23 @@ pyinstaller charmed.spec
 ```
 
 The built application will be in `dist/charmed/`.
+
+### Version Management
+
+Manage versions with the built-in tool:
+
+```bash
+# Get current version
+python version_manager.py --get
+
+# Set version
+python version_manager.py --set 1.2.3
+
+# Bump version
+python version_manager.py --bump major  # 1.0.0 -> 2.0.0
+python version_manager.py --bump minor  # 1.0.0 -> 1.1.0
+python version_manager.py --bump patch  # 1.0.0 -> 1.0.1
+```
 
 ## License
 
@@ -442,3 +483,4 @@ See [LICENSE](LICENSE) file for details.
 If you find Charmed useful, please ⭐ star the repository!
 
 For issues, feature requests, or contributions, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
