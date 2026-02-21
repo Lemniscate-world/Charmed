@@ -23,6 +23,12 @@ dist/
 # Environment variables (contains secrets)
 .env
 
+# OAuth / API credential files (never commit these)
+client_secret*.json
+*credentials*.json
+token.json
+token.pickle
+
 # Spotify token cache (contains auth tokens)
 .cache
 .cache-*
