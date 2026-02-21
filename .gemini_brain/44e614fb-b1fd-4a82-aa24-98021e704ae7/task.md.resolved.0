@@ -1,0 +1,8 @@
+# Task: Step-by-Step Example - Adding Saturated Activation Detection
+
+- [ ] Planning: Research existing detection logic <!-- id: 0 -->
+- [ ] Planning: Design Saturated Activation Detection <!-- id: 1 -->
+- [ ] Execution: Implement detection in [neuraldbg.py](file:///home/kuro/Documents/NeuralDBG/neuraldbg.py) <!-- id: 2 -->
+- [ ] Execution: Add explanation logic for saturated activations <!-- id: 3 -->
+- [ ] Verification: Create a demo/test to verify the feature <!-- id: 4 -->
+- [ ] Documentation: Update `walkthrough.md` with results <!-- id: 5 -->

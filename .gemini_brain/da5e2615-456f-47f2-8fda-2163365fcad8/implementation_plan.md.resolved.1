@@ -1,0 +1,40 @@
+# Artifact Persistence and Cross-Editor Compatibility
+
+This plan establishes a system to make Antigravity's artifacts (plans, tasks, walkthroughs) available to other editors like Cursor, VS Code, or other AI agents working on this codebase.
+
+## Proposed Changes
+
+### [Component] Repository-Based Artifact Storage
+
+To ensure persistence across different machines (PC/Desktop), the artifacts will be stored directly in the repository. This allows them to be committed to Git and shared.
+
+#### [NEW] [.antigravity/artifacts/](file:///home/kuro/Documents/Dissect/.antigravity/artifacts/)
+Create a dedicated folder in the workspace to store the actual markdown artifacts.
+
+#### [COPY] [task.md](file:///home/kuro/Documents/Dissect/.antigravity/artifacts/task.md)
+#### [COPY] [implementation_plan.md](file:///home/kuro/Documents/Dissect/.antigravity/artifacts/implementation_plan.md)
+#### [COPY] [walkthrough.md](file:///home/kuro/Documents/Dissect/.antigravity/artifacts/walkthrough.md)
+
+### [Component] AI Agent Rules
+
+#### [MODIFY] [.cursorrules](file:///home/kuro/Documents/Dissect/.cursorrules)
+Update the integration rules to use relative paths within the project, ensuring they work on any machine where the repo is cloned.
+
+```markdown
+## 🤖 Antigravity Integration
+- **Context Preservation**: Always check `./.antigravity/artifacts/` for:
+    - `implementation_plan.md`: The active roadmap.
+    - `task.md`: Current progress.
+    - `walkthrough.md`: Verification results.
+- **Git Persistence**: Commit these artifacts to track progress across machines.
+```
+
+## Verification Plan
+
+### Automated Tests
+- Verify file existence: `ls .antigravity/artifacts/task.md`.
+- Verify relative path access in [.cursorrules](file:///home/kuro/Documents/Dissect/.cursorrules).
+
+### Manual Verification
+- Commit the `.antigravity/artifacts/` folder and push to Git.
+- Clone on another machine and verify Cursor/Agents can see the artifacts.

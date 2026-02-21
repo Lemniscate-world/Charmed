@@ -1,0 +1,32 @@
+# Phase 5: Ground-Up Debugging & Validation [COMPLETED]
+All tasks in Phase 5 have been verified (pytest, bandit, multi-turn loop).
+
+## Phase 6: Intellectual Property Protection (IP)
+The user requested stronger protection against "theft". We will transition from MIT to a more restrictive license.
+
+### [Component Name]
+#### [MODIFY] [pyproject.toml](file:///home/kuro/Documents/Sugar/pyproject.toml)
+- Update license to "Proprietary" or "All Rights Reserved".
+#### [NEW] [LICENSE](file:///home/kuro/Documents/Sugar/LICENSE)
+- Create a formal "All Rights Reserved" license text.
+#### [MODIFY] [README.md](file:///home/kuro/Documents/Sugar/README.md)
+- Update license section and add copyright notice.
+#### [MODIFY] All Source Files
+- Add `# Copyright (c) 2026 kuro. All Rights Reserved.` to headers.
+
+---
+
+## Phase 7: Functional Demonstration
+Test a complex task on Sugar to verify end-to-end functionality.
+
+### Tasks
+- **Creation**: Create `demo_task.py` to run a multi-turn tool chain.
+- **Execution**: Search the web for AI news → Create Obsidian note.
+- **Verification**: Verify the note exists in the vault.
+
+## Verification Plan
+### Automated Tests
+- Run `bandit` again to ensure headers/license changes don't break anything (unlikely).
+- Run `pytest` to ensure core logic remains sound.
+### Manual Verification
+- Execute `demo_task.py` and inspect the generated Obsidian note.

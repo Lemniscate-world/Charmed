@@ -1,0 +1,33 @@
+# 🎓 Explications Conceptuelles
+
+Vous avez posé 3 excellentes questions qui méritent qu'on s'y arrête avant de plonger dans le code. C'est l'essence même de notre protocole pédagogique (La règle *"Explain as if First Time"*).
+
+---
+
+## 1. L'API Google Docs, c'est payant ?
+**Non, c'est 100% gratuit** pour un usage personnel et de développement !
+L'API Google est facturée si vous faites des *millions* de requêtes par mois (pour une entreprise par exemple). Pour synchroniser un fichier texte de temps en temps, vous restez largement dans ce qu'on appelle le *Free Tier* (le palier gratuit illimité). 
+La seule "difficulté" est qu'il faut créer un "Projet" dans la console développeur Google pour obtenir une clé d'accès sécurisée. C'est un peu fastidieux, mais très formateur.
+
+---
+
+## 2. Qu'est-ce qu'un Garbage Collector (Ramasse-miettes) ?
+Imaginez la mémoire de votre ordinateur (la RAM) comme un grand tableau avec des cases vides.
+Quand un programme Python veut créer une variable (ex: `phrase = "Bonjour"`), il prend une case du tableau.
+
+**Le problème** : Que se passe-t-il quand le programme n'a plus besoin de cette variable ? Il faut libérer la case pour ne pas saturer la RAM !
+1. **Dans les langages avec Garbage Collector (Python, Java, JavaScript)** : L'ordinateur a un petit robot de ménage invisible (le *Garbage Collector*). Ce robot tourne en permanence en arrière-plan et regarde toutes les cases du tableau. S'il voit une variable qui n'est plus utilisée depuis longtemps, il l'efface. C'est génial pour le programmeur, mais ce robot prend du processeur (CPU) pour fonctionner, ce qui crée des micro-ralentissements.
+2. **Dans le langage Rust** : **Il n'y a PAS de robot.** À la place, le compilateur Rust analyse votre code *avant* même de le lancer. Il sait mathématiquement à quelle milliseconde exacte la variable `phrase` ne sera plus utile, et il insère l'ordre "Libérer la mémoire" directement dans le code. C'est pour ça que Rust est si foudroyant de rapidité : il n'y a aucun calcul inutile au moment de l'exécution ! C'est le concept de l'*Ownership* (la propriété de la mémoire).
+
+---
+
+## 3. Microsoft Edge est un Moteur Web ?
+Oui, c'est une distinction fondamentale en informatique !
+Un navigateur (Google Chrome, Microsoft Edge, Safari) est une **boîte en deux morceaux** :
+- **L'Interface** : Les onglets, la barre d'adresse, le bouton retour, les favoris.
+- **Le Moteur Web (WebView / Browser Engine)** : Les engrenages invisibles qui lisent le code HTML/CSS/JavaScript d'un site web et le transforment en pixels sur l'écran (texte, couleurs, images).
+
+- Le moteur de Google Chrome et Microsoft Edge s'appelle **Chromium (Blink)**.
+- Le moteur de Safari s'appelle **WebKit**.
+
+**Tauri** prend une décision très intelligente : il ne télécharge pas l'Interface lourde du navigateur. Il se connecte secrètement au Moteur Web qui est *déjà pré-installé* de base dans le système d'exploitation de l'ordinateur (ex: Edge est toujours présent sous Windows 10/11) pour fabriquer son rendu visuel. C'est la magie qui rend Tauri si léger (un installateur Tauri pèse 3 Mo, contre 150 Mo pour Electron !).

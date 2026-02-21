@@ -1,0 +1,36 @@
+# Protocol Refinement: Multi-lingual & Auto-Commits
+
+## Proposed Changes
+
+### [Component] Universal Rules (kuro-rules)
+
+#### [MODIFY] [AI_GUIDELINES.md](file:///home/kuro/Documents/kuro-rules/AI_GUIDELINES.md)
+- **Multi-lingual Summary**: Mandate both English and French versions in [SESSION_SUMMARY.md](file:///home/kuro/Documents/kuro-rules/SESSION_SUMMARY.md).
+- **Auto-Commit Rule**: Mandate an automatic git commit and summary update after every relevant prompt.
+- **Formulas**: Rules to avoid LaTeX `$` notation in conversations; use clear text/ASCII for accessibility.
+
+### [Component] Visualization
+- **Normal Distribution**: Generate a 3D visualization comparing a Gaussian to a Uniform or Laplace distribution to illustrate current hypotheses.
+
+## Verification Plan
+1. **Sync Check**: Verify all repos have the EN/FR summary template.
+2. **Action Check**: Confirm that the next tool call sequence ends with a commit.
+
+
+
+
+
+### [Component] Cleanup
+
+#### [DELETE] [SpyderTerminal](file:///home/kuro/Documents/SpyderTerminal)
+- Remove the redundant repository clone.
+
+## Verification Plan
+
+### Automated Tests
+- N/A for rule updates and file deletion.
+
+### Manual Verification
+1.  **Rule Check**: Verify that `kuro-rules`, `NeuralDBG`, and `Aladin` all contain the updated `Session Summary` template.
+2.  **Cleanup Check**: Run `ls /home/kuro/Documents` to confirm `SpyderTerminal` is gone.
+3.  **Final Summary**: Demonstrate the new summary format at the end of this session.

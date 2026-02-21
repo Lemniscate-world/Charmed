@@ -1,0 +1,26 @@
+# Brain MVP — Task Tracker
+
+## Phase 1: Project Setup
+- [ ] Create project directory structure
+- [ ] Copy and adapt AI rules from Dissect
+- [ ] Initialize Python project (pyproject.toml, venv)
+- [ ] Install Ollama + pull a lightweight model
+
+## Phase 2: Core Brain Engine
+- [ ] Build LLM connector (Ollama integration)
+- [ ] Build tool/plugin system (extensible connectors)
+- [ ] Build conversation memory (local SQLite)
+
+## Phase 3: Connectors (MVP)
+- [ ] Linear connector (read/write issues, projects, updates)
+- [ ] Obsidian connector (read/search/create markdown notes)
+- [ ] Web search connector (basic search)
+
+## Phase 4: Chat Interface
+- [ ] Telegram bot interface OR simple web CLI
+- [ ] Wire up: chat → LLM → tools → response
+
+## Phase 5: Verification
+- [ ] Test Linear connector with real API
+- [ ] Test Obsidian read/write
+- [ ] End-to-end: user asks question → brain responds with data

@@ -1,0 +1,43 @@
+# Plan: AI Rule Integration & Concrete Working Method
+
+This plan outlines the steps to integrate the shared AI rules from `kuro-rules` into the `Alarmify` project and establishes a concrete methodology for our collaboration.
+
+## Proposed Changes
+
+### Configuration & Rules
+#### [NEW] [AI_GUIDELINES.md](file:///home/kuro/Documents/Alarmify/AI_GUIDELINES.md)
+*   Linked from `~/Documents/kuro-rules/AI_GUIDELINES.md`.
+*   Contains the pedagogical protocol and core philosophy.
+
+#### [NEW] [.cursorrules](file:///home/kuro/Documents/Alarmify/.cursorrules)
+*   Linked from `~/Documents/kuro-rules/.cursorrules`.
+*   Directly instructs the AI on behavior, including the "Devil's Advocate" and "Pedagogical Protocol".
+
+#### [NEW] [.pre-commit-config.yaml](file:///home/kuro/Documents/Alarmify/.pre-commit-config.yaml)
+*   Copied from `~/Documents/kuro-rules/.pre-commit-config.yaml`.
+*   Ensures code standards and security checks (like `bandit`) are run before commits.
+
+#### [NEW] [.github/copilot-instructions.md](file:///home/kuro/Documents/Alarmify/.github/copilot-instructions.md)
+*   Linked from `~/Documents/kuro-rules/copilot-instructions.md`.
+*   Provides context for GitHub Copilot.
+
+## Concrete Working Method
+
+Following the newly integrated rules, our work will follow this cycle:
+
+1.  **Pedagogical Breakdown**: For every task, I will provide a granular breakdown (at least 10 steps) and explain the "Why" before the "How".
+2.  **Devil's Advocate Review**: I will proactively question design choices and highlight potential "code smells" or security risks.
+3.  **Traceability**: We will maintain a [SESSION_SUMMARY.md](file:///home/kuro/Documents/kuro-rules/SESSION_SUMMARY.md) file (in both French and English) to track progress across sessions and tools.
+4.  **Security First**: I will run `bandit` checks regularly to ensure no vulnerabilities are introduced.
+5.  **Clean Code & SRP**: Every modification will respect the Single Responsibility Principle and clean code standards.
+
+## Verification Plan
+
+### Automated Tests
+*   Run the project's existing tests using `pytest`.
+*   Run `bandit -r .` to verify security.
+*   Verify symlinks using `ls -l`.
+
+### Manual Verification
+*   Check that [.cursorrules](file:///home/kuro/Documents/kuro-rules/.cursorrules) and [AI_GUIDELINES.md](file:///home/kuro/Documents/kuro-rules/AI_GUIDELINES.md) are correctly visible in the project root.
+*   Confirm that [SESSION_SUMMARY.md](file:///home/kuro/Documents/kuro-rules/SESSION_SUMMARY.md) is initialized correctly.

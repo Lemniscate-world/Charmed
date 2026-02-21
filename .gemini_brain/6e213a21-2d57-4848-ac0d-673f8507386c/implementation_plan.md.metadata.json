@@ -1,0 +1,6 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "Implementation plan to integrate new technical, security, and pedagogical universal rules into kuro-rules and sync them with the Alarmify project. This includes mandates for CodeQL, Fuzzing, Locust, Mutation testing, and the Reversibility Principle.",
+  "updatedAt": "2026-02-20T01:20:24.280841364Z",
+  "version": "2"
+}

@@ -1,0 +1,113 @@
+# Sugar Upgrade — Implementation Plan
+
+Rename Brain → Sugar, move to Documents, add a beautiful setup GUI, harden security,  copy pre-commit hooks, and create a shared rules system.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **GitHub repo**: `gh` CLI is not installed. I'll init a local git repo. You'll need to create the repo on GitHub manually or install `gh` (`sudo snap install gh`).
+
+> [!IMPORTANT]
+> **Shared rules across projects**: I'll create a central rules repo at `~/Documents/kuro-rules/` with symlinks into each project. This means editing rules in one place updates them everywhere.
+
+---
+
+## Proposed Changes
+
+### 1. Rename & Move
+
+- Move `/home/kuro/.gemini/antigravity/scratch/brain/` → `/home/kuro/Documents/Sugar/`
+- Update all internal references from "brain" to "sugar"
+- Rename Python package `brain/` → `sugar/`
+- Init git repo + initial commit
+
+---
+
+### 2. Beautiful Setup GUI (Vite + React)
+
+#### Why Vite+React?
+A desktop-accessible web app via `localhost`. Beautiful, modern, fast — no Electron bloat.
+
+#### [NEW] `gui/` — Setup Wizard Web App
+
+A stunning setup wizard with:
+- **Welcome screen** with Sugar branding + animation
+- **Step 1**: Obsidian vault path picker (file browser + manual input)
+- **Step 2**: Linear API key setup (guided instructions with screenshots/links)
+- **Step 3**: Ollama status check (auto-detect, install guide)
+- **Step 4**: Summary + "Launch Sugar" button
+
+Backend API (Python FastAPI) to:
+- Save config to `.env`
+- Check Ollama status
+- Validate Linear API key
+- Browse filesystem for vault selection
+
+---
+
+### 3. Pre-commit Hooks (from Dissect)
+
+#### [NEW] [.pre-commit-config.yaml](file:///home/kuro/Documents/Sugar/.pre-commit-config.yaml)
+Adapted from Dissect's config:
+- `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`, `check-json`
+- `ruff` (lint + format)
+- `mypy` (type checking)
+- Remove Dissect-specific hooks (pylint on `dissect/`, diagram gen, linear-sync)
+- **Add**: `bandit` for security scanning
+
+---
+
+### 4. Security Hardening
+
+- Add `bandit` (Python security linter) to pre-commit
+- Add `safety` check for vulnerable dependencies
+- Env var validation (no secrets in logs/output)
+- Path traversal protection (already in Obsidian connector ✓)
+- Update `AI_GUIDELINES.md` with security rule
+
+---
+
+### 5. Shared Rules System (`~/Documents/kuro-rules/`)
+
+A central place for your AI rules that symlinks into every project:
+
+```
+~/Documents/kuro-rules/
+├── AI_GUIDELINES.md        # Master copy — shared principles
+├── .cursorrules            # Master cursor rules
+├── .pre-commit-config.yaml # Base pre-commit template
+├── copilot-instructions.md # GitHub Copilot rules
+└── install.sh              # Script: symlinks rules into a target project
+```
+
+**Usage**: `~/Documents/kuro-rules/install.sh /path/to/any-project`  
+This creates symlinks so editing rules in `kuro-rules/` auto-updates everywhere.
+
+---
+
+### 6. Updated AI Guidelines
+
+Add to `AI_GUIDELINES.md` and `.cursorrules`:
+- **Security rule**: "Always ensure the project is secure. Run `bandit` and `safety` checks. Never log secrets. Validate all user input. Protect against path traversal."
+- **Pre-commit mandate**: Every project must have pre-commit hooks installed.
+
+---
+
+## Verification Plan
+
+### Automated
+```bash
+# Tests still pass after rename
+python -m pytest tests/ -v
+
+# Pre-commit works
+pre-commit run --all-files
+
+# Security scan
+bandit -r sugar/ -ll
+```
+
+### Manual
+- Open GUI in browser → complete setup wizard
+- Verify `.env` is created with correct values
+- Verify shared rules symlinks work across Sugar and Dissect

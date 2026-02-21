@@ -1,0 +1,69 @@
+# Rebranding to "Charmed" and Rule Enforcement
+
+This plan outlines the steps to rebrand the project from "Alarmify/CharmAlarm" to "Charmed" and ensures all user rules (Pedagogical Protocol, Devil's Advocate, Security, etc.) are strictly followed and enforced.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Data Migration**: Changing the configuration directory from `~/.alarmify` to `~/.charmed` will cause users to lose their settings/alarms unless we migrate them. I will implement a migration step or keep the old path if preferred. For this plan, I assume a full rebrand including the data directory.
+> **Environment Variables**: I will rename `ALARMIFY_TEST_MODE` to `CHARMED_TEST_MODE`.
+
+## Proposed Changes
+
+### Branding Updates (Documentation & UI)
+
+#### [MODIFY] [README.md](file:///home/kuro/Documents/Alarmify/README.md)
+- Replace all instances of `CharmAlarm` and `Alarmify` with `Charmed`.
+- Update screenshot captions and descriptions.
+
+#### [MODIFY] [gui.py](file:///home/kuro/Documents/Alarmify/gui.py)
+- Update `setWindowTitle` from `CharmAlarm` to `Charmed`.
+- Update `logo` label text.
+- Update log messages and status bar strings.
+
+#### [MODIFY] [main.py](file:///home/kuro/Documents/Alarmify/main.py)
+- Update `app.setApplicationName` and `app.setOrganizationName`.
+- Update logger messages.
+
+#### [MODIFY] [alarm.py](file:///home/kuro/Documents/Alarmify/alarm.py)
+- Update `~/.alarmify` paths to `~/.charmed`.
+- Update documentation in module docstring.
+
+#### [MODIFY] [build_installer.py](file:///home/kuro/Documents/Alarmify/build_installer.py)
+- Update output names from `CharmAlarm.exe` to `Charmed.exe`.
+- Update log messages.
+
+#### [NEW] [charmed.spec](file:///home/kuro/Documents/Alarmify/charmed.spec)
+- Copy and update from `alarmify.spec`/[charmalarm.spec](file:///home/kuro/Documents/Alarmify/charmalarm.spec).
+#### [DELETE] [alarmify.spec](file:///home/kuro/Documents/Alarmify/alarmify.spec)
+#### [DELETE] [charmalarm.spec](file:///home/kuro/Documents/Alarmify/charmalarm.spec)
+
+#### [MODIFY] [CONTRIBUTING.md](file:///home/kuro/Documents/Alarmify/CONTRIBUTING.md)
+- Update all references to the project name.
+
+#### [MODIFY] [AGENTS.md](file:///home/kuro/Documents/Alarmify/AGENTS.md)
+- Update build commands and architectural descriptions.
+
+---
+
+### Rule Enforcement
+
+#### [MODIFY] [task.md](file:///home/kuro/.gemini/antigravity/brain/6e213a21-2d57-4848-ac0d-673f8507386c/task.md)
+- Ensure all tasks are granular and follow the Pedagogical Protocol.
+
+#### [NEW] [SESSION_SUMMARY.md](file:///home/kuro/Documents/Alarmify/SESSION_SUMMARY.md)
+- Create the initial session summary as required by [.cursorrules](file:///home/kuro/Documents/Alarmify/.cursorrules).
+
+## Verification Plan
+
+### Automated Tests
+- Run `bandit -r . -ll` to ensure no security regressions.
+- Run `pytest tests/` to verify that rebranding didn't break core logic (especially paths and state management).
+    ```bash
+    .venv/bin/python -m pytest tests/ -v
+    ```
+
+### Manual Verification
+- Launch the application and verify "Charmed" is displayed in the window title and logo.
+- Verify that a new `.charmed` directory is created in the home folder if it doesn't exist.
+- Verify that the help/about dialogs (if any) show the new name.

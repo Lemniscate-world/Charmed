@@ -1,0 +1,72 @@
+# Sugar Upgrade — Walkthrough
+
+## What Was Built
+
+Renamed "Brain" to **Sugar** and upgraded it with a beautiful setup GUI, strict security rules, and a shared configuration system.
+
+## Project Location
+
+```
+/home/kuro/Documents/Sugar/
+```
+
+> [!TIP]
+> This is now a git repository. You can push it to GitHub manually (since `gh` was missing).
+
+## New Features
+
+### 1. Beautifull Setup GUI
+A 5-step wizard to configure everything without touching [.env](file:///home/kuro/Documents/Dissect/.env) files.
+- **Tech**: Vite + React + Tailwind (Frontend), FastAPI (Backend)
+- **Features**: Obsidian vault picker, Linear API validation, Ollama status check
+
+### 2. Shared Rules System
+A central repository for your AI rules that updates everywhere.
+
+```
+~/Documents/kuro-rules/
+├── AI_GUIDELINES.md        # Master security & design rules
+├── .cursorrules            # Master Cursor instructions
+└── install.sh              # Script to link rules to any project
+```
+
+**Installed in:**
+- `~/Documents/Sugar`
+- `~/Documents/Dissect`
+
+### 3. Security Hardening
+- **Bandit**: Security linter added to pre-commit.
+- **Pre-commit**: Hooks for secret detection and linting.
+- **Rule**: "Always ensure the project is secure" added to guidelines.
+
+## How to Run
+
+### 1. Start the GUI Setup
+```bash
+cd /home/kuro/Documents/Sugar
+# Install GUI dependencies (one-time)
+cd gui && npm install && cd ..
+
+# Run the Setup Server
+.venv/bin/uvicorn sugar.interfaces.gui_api:app --reload
+```
+Then open **[http://localhost:8000](http://localhost:8000)** in your browser.
+
+### 2. Run the CLI
+After setup, run the main chat interface:
+```bash
+source .venv/bin/activate
+sugar
+```
+
+## Verification
+
+**33/33 tests passing** ✅
+- [test_linear.py](file:///home/kuro/Documents/Sugar/tests/test_linear.py): Mocked API calls
+- [test_obsidian.py](file:///home/kuro/Documents/Sugar/tests/test_obsidian.py): Filesystem operations (fixed rename issues)
+- [test_llm.py](file:///home/kuro/Documents/Sugar/tests/test_llm.py): Tool parsing and error handling
+
+**Security Check**
+```bash
+git ls-files | xargs bandit -ll  # Should be clean
+```

@@ -1,0 +1,89 @@
+# 🎓 Explications Conceptuelles & Fondations Rust
+
+Voici la suite de notre apprentissage, en plongeant dans les technologies que nous allons utiliser pour la refonte Tauri !
+
+---
+
+## 1. C'est quoi Node.js et pourquoi en a-t-on besoin ?
+Dans les années 2000, le langage **JavaScript** (JS) ne fonctionnait que *dans* les navigateurs web (Chrome, Firefox) pour faire bouger des boutons ou vérifier un formulaire. Il était impossible de l'utiliser pour lire un fichier sur l'ordinateur ou créer un vrai logiciel.
+
+En 2009, Ryan Dahl a eu une idée de génie : il a pris le moteur JavaScript de Google Chrome (le moteur V8), l'a sorti du navigateur, et l'a installé directement sur l'ordinateur. C'est ça **Node.js** !
+C'est un "environnement d'exécution" qui permet au JavaScript de tourner sur votre bureau Linux ou Windows, exactement comme Python. 
+
+**Pourquoi en a-t-on besoin pour Tauri ?**
+Parce que l'interface visuelle (Frontend) va être écrite en **React**, qui est une bibliothèque JavaScript. Pour la développer, lancer le serveur de test local et compiler le code web final pour qu'il rentre dans Tauri, nous avons besoin des outils de Node.js (principalement son gestionnaire de paquets `npm` ou `npx`). 
+C'est Node.js qui va fabriquer les "briques visuelles", et Rust (Tauri) va les emballer.
+
+---
+
+## 2. Les Bases de Rust : Ce qu'il faut savoir
+
+Rust a été créé par Mozilla en 2010 pour résoudre deux énormes problèmes de la programmation système (comme le C++) : la sécurité (les bugs de mémoire, les piratages) et la difficulté à gérer plusieurs tâches en même temps (les *threads*).
+
+### A. La syntaxe : Proche du C++
+Contrairement à Python qui utilise l'indentation (les espaces) pour définir les blocs, Rust utilise des **accolades `{}`** et demande des **points-virgules `;`** à la fin des lignes.
+
+*Python :*
+```python
+def dire_bonjour(nom):
+    message = f"Bonjour {nom}"
+    print(message)
+```
+
+*Rust :*
+```rust
+fn dire_bonjour(nom: &str) {
+    let message = format!("Bonjour {}", nom);
+    println!("{}", message);
+}
+```
+*Remarquez le `let` pour créer une variable, les `{}` et le `;`.*
+
+### B. Le Typage Statique Fort
+Python est un langage à typage "dynamique". Vous pouvez mettre un texte, puis un chiffre dans la même variable, Python s'adapte en temps réel (c'est facile, mais source de bugs).
+**Rust est typé statiquement.** Le compilateur exige de connaître la "nature" exacte de chaque variable avant même de lancer le programme. Si vous promettez un nombre entier de 32 bits (`i32`) et que vous donnez du texte, le programme refuse catégoriquement de se compiler (lancer).
+- **L'avantage** : Si le code Rust compile (démarre), c'est qu'il est mathématiquement prouvé qu'il ne contient aucune erreur de type. "If it compiles, it works".
+
+---
+
+## 3. Le Concept d'Ownership (La Propriété) 🤯
+
+C'est LE concept central et unique de Rust. C'est ce qui le rend si rapide (pas de Garbage Collector, voir chapitre précédent) et si sécurisé (impossible d'avoir des crashs de mémoire).
+
+Dans la vraie vie, si je vous donne un cahier, je ne l'ai plus dans les mains. Je ne peux plus écrire dedans. Je vous en ai **transféré la propriété** (*Ownership*). En Rust, c'est identique !
+
+### Les 3 Règles d'Or de l'Ownership
+1. Chaque valeur en Rust a une variable qui s'appelle son **propriétaire** (*owner*).
+2. Il ne peut y avoir **qu'un seul propriétaire à la fois** pour une donnée.
+3. Quand le propriétaire "sort" de son bloc de code (`}`), la valeur est **immédiatement détruite** de la RAM.
+
+### L'Exemple Concret
+
+Si vous faites ceci en Python :
+```python
+A = "Livre magique"
+B = A 
+print(A) # Fonctionne parfaitement, Python a secrètement "partagé" l'accès.
+```
+
+Regardez ce que fait Rust :
+```rust
+let a = String::from("Livre magique");
+let b = a;  // "a" DONNE le livre à "b". Le droit de propriété est transféré (C'est le "Move").
+
+println!("{}", a); // ERREUR FATALE DE COMPILATION ❌ 
+// Le compilateur Rust hurle : "Tu essaies d'utiliser 'a' alors qu'il n'est plus propriétaire de la donnée !"
+```
+
+### Comment faire alors ? (Les Emprunts / Borrowing)
+Si `A` veut juste que `B` lise le livre sans lui donner, `A` lui **prête**. C'est le concept de l'Emprunt (*Borrowing*), représenté par le symbole `&` :
+
+```rust
+let a = String::from("Livre magique");
+let b = &a; // "Je te prête mon livre avec la référence '&', tu peux le lire, mais je reste le chef."
+
+println!("'a' vaut {} et 'b' vaut {}", a, b); // SUCCÈS ✅
+```
+
+La règle magique : Vous pouvez prêter votre variable à autant de lecteurs que vous voulez (lecture seule), **OU** la prêter à une seule personne qui a le droit de la modifier (référence mutable `&mut`). Jamais les deux en même temps ! 
+Cela garantit à 100% que deux bouts de code ne vont jamais essayer de modifier la même donnée en même temps, évitant ainsi tous conflits (*Data Races*). C'est brillant !

@@ -1,0 +1,42 @@
+# Artifact Persistence and Cross-Editor Compatibility
+
+This plan establishes a system to make Antigravity's artifacts (plans, tasks, walkthroughs) available to other editors like Cursor, VS Code, or other AI agents working on this codebase.
+
+## Proposed Changes
+
+### [Component] Artifact Linking
+
+#### [NEW] [.antigravity/](file:///home/kuro/Documents/Dissect/.antigravity/)
+Create a directory in the workspace to hold links to Antigravity's internal storage.
+
+#### [NEW] [.antigravity/current](file:///home/kuro/Documents/Dissect/.antigravity/current)
+A symbolic link pointing to the current conversation's brain directory:
+`/home/kuro/.gemini/antigravity/brain/da5e2615-456f-47f2-8fda-2163365fcad8`
+
+### [Component] AI Agent Rules
+
+#### [MODIFY] [.cursorrules](file:///home/kuro/Documents/Dissect/.cursorrules)
+Add a section instructing AI agents to prioritize Antigravity's artifacts.
+
+```markdown
+## 🤖 Antigravity Integration
+- **Context Preservation**: Always check `.antigravity/current/` for:
+    - `implementation_plan.md`: The active roadmap and architectural decisions.
+    - `task.md`: Current progress and remaining checklist.
+    - `walkthrough.md`: Details of completed work and verification results.
+- **Priority**: Antigravity's artifacts are the source of truth for current development tasks.
+```
+
+### [Component] Automation
+
+#### [NEW] [persistence.md](file:///home/kuro/Documents/Dissect/.agent/workflows/persistence.md)
+A workflow to automate the linking process.
+
+## Verification Plan
+
+### Automated Tests
+- Run `ls -ld .antigravity/current` to verify it points to the correct brain directory.
+- Verify content accessibility: `cat .antigravity/current/task.md`.
+
+### Manual Verification
+- Open the project in Cursor and ask: "What is the current status according to the Antigravity task list?" to confirm Cursor can see the linked files.

@@ -1,0 +1,57 @@
+# Walkthrough: Dissect 2.0 - Orchestration Visualizer
+
+Successfully pivoted Dissect from algorithm detection to an **AI Agent Orchestration Visualizer**.
+
+## What Changed
+
+### Archived (Moved to Algoritmi)
+- `dissect/detectors/` → `archive/`
+- [dissect/scanner.py](file:///home/kuro/Documents/Dissect/dissect/scanner.py) → `archive/`
+- [dissect/ast_normalizer.py](file:///home/kuro/Documents/Dissect/dissect/ast_normalizer.py) → `archive/`
+
+### New Core Modules
+| File | Purpose |
+|---|---|
+| [graph.py](file:///home/kuro/Documents/Dissect/dissect/graph.py) | OrchestrationGraph data structure with nodes, edges, critical path |
+| [trace_receiver.py](file:///home/kuro/Documents/Dissect/dissect/trace_receiver.py) | OpenTelemetry & LangChain trace parsers |
+| [exporters/](file:///home/kuro/Documents/Dissect/dissect/exporters/) | Mermaid, DOT, HTML export formats |
+| [cli.py](file:///home/kuro/Documents/Dissect/dissect/cli.py) | New [trace](file:///home/kuro/Documents/Dissect/dissect/cli.py#15-41), [visualize](file:///home/kuro/Documents/Dissect/dissect/cli.py#43-85), [serve](file:///home/kuro/Documents/Dissect/dissect/cli.py#87-94) commands |
+
+## New CLI Usage
+
+```bash
+# Parse and inspect a trace
+python3 -m dissect.cli trace --file trace.json
+
+# Generate interactive HTML
+python3 -m dissect.cli visualize --file trace.json --format html
+
+# Generate Mermaid diagram
+python3 -m dissect.cli visualize --file trace.json --format mermaid
+```
+
+## Verification Results
+
+```
+✓ Parsed successfully!
+  Name: Trace
+  Nodes: 7
+  Edges: 6
+
+  Critical Path (750ms):
+    → User Query (50ms)
+    → Writer Agent (400ms)
+    → Claude Call (300ms)
+```
+
+## Generated Visualization
+
+![Interactive Demo](/home/kuro/.gemini/antigravity/brain/aa252a15-bec2-4bd2-a6ff-37bd01849699/dissect_v2_demo_1770657475382.png)
+
+### Demo Recording
+[Watch the interaction demo](file:///home/kuro/.gemini/antigravity/brain/aa252a15-bec2-4bd2-a6ff-37bd01849699/dissect_v2_demo_1770657437837.webp)
+
+## Next Steps
+1. Install dependencies: `pip install -e .`
+2. Test with real LangChain/CrewAI traces
+3. Build real-time streaming server

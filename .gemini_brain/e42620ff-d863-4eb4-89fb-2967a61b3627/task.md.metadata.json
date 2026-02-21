@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_TASK",
+  "summary":  "Checklist for resolving the blocked git push caused by Google OAuth secrets in commit history.",
+  "updatedAt":  "2026-02-21T12:36:23.554640414Z"
+}

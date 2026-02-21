@@ -1,0 +1,37 @@
+# Implementation Plan: Algorithmic Map & Quality Gates
+
+## Goal
+Shift Dissect from a simple local analysis tool to a repository-wide intelligence system that counters "vibecoding" (blind AI generation) by enforcing algorithmic transparency and quality via CI/CD.
+
+## User Review Required
+> [!IMPORTANT]
+> **Paradigm Shift**: We are moving from "What is this file?" to "What is the algorithmic composition of this entire repo?"
+
+## Proposed Features
+
+### 1. Algorithmic Map (Visualization)
+A new visualization mode that provides a high-level topology of the project.
+*   **Concept**: A "Google Maps" for code complexity.
+*   **Visuals**: 
+    *   **Nodes**: Functions/Modules.
+    *   **Colors**: Algorithmic Category (Sorting=Red, Graph=Blue).
+    *   **Size/Heat**: Complexity ($O(n^2)$ = Large/Hot).
+*   **Usage**: `dissect map --output ./map.html`
+
+### 2. CI/CD "Algorithm Inventory" Gate
+A stricter check for automated pipelines.
+*   **Mechanism**: Scans the PR diff.
+*   **Blocking Conditions**:
+    *   Detection of "High Complexity" algorithms (e.g., $O(n!)$ or $O(2^n)$) without explicit exemption.
+    *   Regression: Changing an identified $O(n \log n)$ function to $O(n^2)$.
+*   **Artifact**: Generates a `dissect-inventory.json` summarizing the PRs algorithmic impact.
+
+## Refinement of Key Concepts
+### "Vibecoding" Counter-Measure
+If machines write the code, Dissect reads it.
+*   **Feature**: `dissect audit` -> targeted at AI-generated branches. Auto-comments on PRs: "⚠️ AI generated a Bubble Sort here. Suggestion: Use optimized library sort."
+
+## Verification
+*   Create a dummy repo with mixed complexity algorithms.
+*   Run `dissect map` and verify the heat map highlights the inefficient bubble sort.
+*   Run CI simulation to verify it blocks the "bad" PR.

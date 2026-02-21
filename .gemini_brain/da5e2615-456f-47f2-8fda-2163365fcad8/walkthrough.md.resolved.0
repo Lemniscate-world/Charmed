@@ -1,0 +1,43 @@
+# Walkthrough: Artifact Persistence Across Editors
+
+I have established a system to ensure that Antigravity's artifacts (tasks, plans, walkthroughs) are accessible to other AI agents and editors like Cursor and VS Code.
+
+## Changes Made
+
+### 1. Artifact Linking
+I created a `.antigravity/current` symbolic link in the project root that points to the internal brain directory of this conversation. This allows any tool or agent with access to the project folder to read the current context.
+
+```bash
+.antigravity/current -> /home/kuro/.gemini/antigravity/brain/da5e2615-456f-47f2-8fda-2163365fcad8
+```
+
+### 2. Project Rule Updates
+I modified [.cursorrules](file:///home/kuro/Documents/Dissect/.cursorrules) to include an "Antigravity Integration" section. This instructs other AI agents (like Cursor) to prioritize these artifacts as the source of truth.
+
+```markdown
+## 🤖 Antigravity Integration
+- **Context Preservation**: Always check `.antigravity/current/` for:
+    - `implementation_plan.md`
+    - `task.md`
+    - `walkthrough.md`
+- **Priority**: Antigravity's artifacts are the source of truth for current development tasks.
+```
+
+### 3. Persistence Workflow
+I added a new workflow in [.agent/workflows/persistence.md](file:///home/kuro/Documents/Dissect/.agent/workflows/persistence.md) to automate this process in the future.
+
+## Verification Results
+
+I verified the setup by checking the symlink target and reading the task list through the new link:
+
+```bash
+$ ls -ld .antigravity/current
+lrwxrwxrwx 1 kuro kuro 73 févr. 10 05:50 .antigravity/current -> /home/kuro/.gemini/antigravity/brain/da5e2615-456f-47f2-8fda-2163365fcad8
+
+$ cat .antigravity/current/task.md
+# Task: Enable Artifact Persistence Across Editors
+...
+[x] Verify setup and document for user
+```
+
+The system is now fully operational, and you can continue coding with these artifacts in any editor.

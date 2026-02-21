@@ -1,0 +1,38 @@
+# Project Aladin: Probabilistic Transformer Implementation
+
+This plan follows the **Pedagogical Protocol**. We will build a Transformer-based model to predict time series distributions.
+
+## Proposed Steps
+
+### Phase 1: Conceptual Briefings
+We will cover the "Why" and "How" of:
+1. **Synthetic Data**: Why it's the only way to verify uncertainty.
+2. **Transformers**: Why Attention is better than RNNs for long-term dependencies.
+3. **Gaussian Heads**: How to output a distribution instead of a point.
+4. **NLL Loss**: The math of maximum likelihood estimation.
+
+### Phase 2: Implementation (The 12 Steps)
+(See [task.md](file:///home/kuro/.gemini/antigravity/brain/771eaffe-601b-4127-8253-17b40bce0a23/task.md) for the full granular list).
+
+## Verification Plan
+1. **Gaussian Test**: Verify that the model can recover the known noise level of synthetic data.
+2. **Visual Check**: Plot predicted mean ± standard deviation.
+3. **NeuralDBG**: Monitor for exploding gradients in the LogVar output.
+
+
+
+
+### [Component] Cleanup
+
+#### [DELETE] [SpyderTerminal](file:///home/kuro/Documents/SpyderTerminal)
+- Remove the redundant repository clone.
+
+## Verification Plan
+
+### Automated Tests
+- N/A for rule updates and file deletion.
+
+### Manual Verification
+1.  **Rule Check**: Verify that `kuro-rules`, `NeuralDBG`, and `Aladin` all contain the updated `Session Summary` template.
+2.  **Cleanup Check**: Run `ls /home/kuro/Documents` to confirm `SpyderTerminal` is gone.
+3.  **Final Summary**: Demonstrate the new summary format at the end of this session.

@@ -1,0 +1,38 @@
+# Rebranding and Differentiation Strategy
+
+The goal is to move away from the "Alarmify" name to avoid collision with the existing `alarmify.com` and to emphasize the "95%" of the original idea that is yet to be fully marketed: the desktop ecosystem and seamless cloud synchronization.
+
+## Proposed Changes
+
+### 1. Rebranding (The "Charm" Pivot)
+Given the deep integration of the "Charm" design system, I propose rebranding to **CharmAlarm** or **Charmify** (pending availability). This aligns with the existing code patterns (e.g., `charm_stylesheet.py`, `charm_animations.py`).
+
+#### [MODIFY] [README.md](file:///home/kuro/Documents/Alarmify/README.md)
+- Update title and descriptions to the new brand name.
+- Emphasize the "Ecosystem" (Desktop + Mobile + Cloud) as the primary differentiator.
+
+#### [MODIFY] [gui.py](file:///home/kuro/Documents/Alarmify/gui.py)
+- Update window titles and UI text.
+- Update logo/icon references if necessary (the `icon_generator.py` can be updated to generate a new brand-aligned icon).
+
+#### [MODIFY] [mobile_app/README.md](file:///home/kuro/Documents/Alarmify/mobile_app/README.md)
+- Update branding in the mobile app documentation.
+
+### 2. Doubling Down on Differentiators
+The competitor only has an iOS app. Our "95%" includes:
+- **True Cross-Platform Sync**: Windows, Linux, Mac, iOS, and Android.
+- **Advanced Desktop Utility**: System tray, global shortcuts, and desktop-specific features like "Auto-wake Spotify device".
+- **Sophisticated Design**: The "Charm" aesthetic is more distinctive than generic mobile glassmorphism.
+
+## Verification Plan
+
+### Automated Tests
+- Run existing tests to ensure no regressions after name changes:
+  ```bash
+  python -m pytest tests/ -v
+  ```
+
+### Manual Verification
+- Check the generated icon with the new branding.
+- Verify the main window title and all UI labels reflect the new name.
+- Verify the mobile app build still works with updated local assets.

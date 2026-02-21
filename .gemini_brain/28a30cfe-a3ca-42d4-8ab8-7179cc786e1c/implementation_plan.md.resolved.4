@@ -1,0 +1,36 @@
+# Sugar Phase 4: Connectors & Tools
+
+## Goal
+Enable Sugar to interact with the world (Obsidian, Linear) while maintaining a streaming chat interface.
+
+## Strategy
+Upgrade [Engine](file:///home/kuro/.gemini/antigravity/scratch/brain/brain/core/engine.py#15-163) to support **Streaming Tool Execution**:
+1.  Stream LLM tokens.
+2.  Detect Tool Calls (JSON blocks).
+3.  Intercept & Hide Tool Calls from the user.
+4.  Execute Tool.
+5.  Stream the Final Response (Post-Tool).
+
+## Proposed Changes
+
+### 1. Core (`sugar/core/`)
+- **`llm.py`**: Add `chat_stream` method (wraps `client.chat(stream=True)`).
+- **`engine.py`**: Add `process_message_stream` method.
+  -   Logic: Buffer first N chars. If ` ```json` detected, switch to "Tool Mode" (buffer all, execute, recurse). If not, switch to "Chat Mode" (stream through).
+
+### 2. Connectors (`sugar/connectors/`)
+- **`obsidian.py`**:
+  -   `search(query)`: Search file names and content.
+  -   `read(path)`: Read file content.
+  -   `append(path, text)`: Add to daily note.
+- **`linear.py`**:
+  -   `create_issue(title, description, team)`: Create issue.
+  -   `list_issues()`: Get my assigned issues.
+
+### 3. API (`sugar/interfaces/gui_api.py`)
+-   Replace direct `ollama.chat` with `engine.process_message_stream`.
+-   Register Connectors on startup (`init_engine`).
+
+## Verification
+-   **Test**: Ask "Search my notes for 'Project X'". -> Should see streaming answer citing notes.
+-   **Test**: Ask "Create a Linear issue 'Fix bug'". -> Should confirm creation.

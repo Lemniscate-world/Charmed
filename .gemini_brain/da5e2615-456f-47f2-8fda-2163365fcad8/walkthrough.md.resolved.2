@@ -1,0 +1,46 @@
+# Walkthrough: Artifact Persistence Across Editors
+
+I have established a system to ensure that Antigravity's artifacts (tasks, plans, walkthroughs) are accessible to other AI agents and editors like Cursor and VS Code.
+
+## Changes Made
+
+### 1. Repository-Based Artifact Storage
+Instead of relying on local symlinks, I moved the artifacts directly into the repository at [.antigravity/artifacts/](file:///home/kuro/Documents/Dissect/.antigravity/artifacts/). This directory contains the latest versions of:
+- [implementation_plan.md](file:///home/kuro/.gemini/antigravity/brain/da5e2615-456f-47f2-8fda-2163365fcad8/implementation_plan.md)
+- [task.md](file:///home/kuro/.gemini/antigravity/brain/da5e2615-456f-47f2-8fda-2163365fcad8/task.md)
+- [walkthrough.md](file:///home/kuro/.gemini/antigravity/brain/da5e2615-456f-47f2-8fda-2163365fcad8/walkthrough.md)
+
+### 2. Project Rule Updates
+I updated [.cursorrules](file:///home/kuro/Documents/Dissect/.cursorrules) to use relative paths. This ensures that any machine running the repo (Cursor, VS Code, etc.) will look for these files in the correct place.
+
+```markdown
+## 🤖 Antigravity Integration
+- **Context Preservation**: Always check `./.antigravity/artifacts/` for:
+    - `implementation_plan.md`: The active roadmap.
+    - `task.md`: Current progress.
+    - `walkthrough.md`: Verification results.
+- **Git Persistence**: Commit these artifacts to track progress across machines.
+```
+
+### 3. Artifact Maintenance & Proactive Updates
+I added explicit rules to [.cursorrules](file:///home/kuro/Documents/Dissect/.cursorrules) and [AI_GUIDELINES.md](file:///home/kuro/Documents/Dissect/AI_GUIDELINES.md) requiring all AI agents to:
+- **Always update artifacts** (tasks, plans, walkthroughs) before finishing a task.
+- **Maintain the single source of truth** in `./.antigravity/artifacts/`.
+- **Read existing context** before starting new work to ensure project continuity across machines and sessions.
+
+## Verification Results
+
+I verified the setup by confirming the files are correctly placed and guidelines are updated:
+
+```bash
+$ ls -R .antigravity/artifacts/
+implementation_plan.md  task.md  walkthrough.md
+
+$ grep "Proactive Maintenance" .cursorrules
+- **Proactive Maintenance**: Mandatory. Always update these artifacts before finishing a task.
+```
+
+The system is now fully cross-machine compatible and includes "baked-in" rules for continuous maintenance. Just remember to **commit and push** the `.antigravity/artifacts/` folder!
+
+
+The system is now fully operational, and you can continue coding with these artifacts in any editor.

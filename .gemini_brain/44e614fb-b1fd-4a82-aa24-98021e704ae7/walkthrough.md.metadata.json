@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_WALKTHROUGH",
+  "summary": "Walkthrough of the Saturated Activation Detection feature implementation. This artifact documents the changes made to NeuralDbg, the verification steps taken, and the successful detection of saturation in a Tanh-based model.",
+  "updatedAt": "2026-02-12T06:52:34.378685627Z"
+}

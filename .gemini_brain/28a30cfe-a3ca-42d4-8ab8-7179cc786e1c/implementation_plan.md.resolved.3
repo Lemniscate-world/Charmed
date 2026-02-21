@@ -1,0 +1,34 @@
+# Sugar Phase 3: Persistence & Memory
+
+## Goal
+Enable Sugar to recall past conversations by wiring the Web UI to the existing SQLite [Memory](file:///home/kuro/Documents/Sugar/sugar/core/memory.py#30-184) backend.
+
+## Current State
+- [sugar/core/memory.py](file:///home/kuro/Documents/Sugar/sugar/core/memory.py): **Ready** (Has [new_conversation](file:///home/kuro/Documents/Sugar/sugar/core/memory.py#69-80), [add_message](file:///home/kuro/.gemini/antigravity/scratch/brain/brain/core/memory.py#81-106), [get_messages](file:///home/kuro/.gemini/antigravity/scratch/brain/brain/core/memory.py#107-133)).
+- [gui_api.py](file:///home/kuro/Documents/Sugar/sugar/interfaces/gui_api.py): **Disconnected** (Chat is ephemeral, messages passed from frontend only).
+
+## Proposed Changes
+
+### 1. Backend API ([sugar/interfaces/gui_api.py](file:///home/kuro/Documents/Sugar/sugar/interfaces/gui_api.py))
+- **Initialize Memory**: Create global `memory = Memory()` instance.
+- **New Endpoints**:
+  - `POST /api/conversations`: Create new chat -> returns [id](file:///home/kuro/Documents/Sugar/gui/src/components/Sidebar.jsx#5-31).
+  - `GET /api/conversations`: List history.
+  - `GET /api/conversations/{id}/messages`: Load chat context.
+- **Update Chat Endpoint**:
+  - In `/api/chat/stream`:
+    - Save incoming User message to DB.
+    - Stream LLM response.
+    - Accumulate and save Assistant message to DB on completion.
+
+### 2. Frontend (`gui/src/`)
+- **Sidebar**:
+  - Add "New Chat" button.
+  - List recent conversations (clickable).
+- **Chat Component**:
+  - Load messages from API on mount (if ID present).
+  - Update URL (e.g., `?chat_id=...`).
+
+## Verification
+- Start a chat, refresh page -> Chat should persist.
+- Check `brain_memory.db` (SQLite) for data.

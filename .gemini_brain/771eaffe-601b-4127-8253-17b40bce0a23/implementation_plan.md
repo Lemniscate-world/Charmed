@@ -1,0 +1,47 @@
+# NeuralDBG Development Plan
+
+The goal is to move NeuralDBG from its current MVP state towards a more robust and feature-rich causal inference engine for deep learning.
+
+## Proposed Changes
+
+### Environment & Verification
+- **Setup Virtual Environment**: Create a local `.venv` for NeuralDBG and install `torch>=1.9.0` and `pytest`.
+- **Baseline Verification**: Fix and run all tests in `tests/` and execute `demo_vanishing_gradients.py`.
+
+---
+
+### Core Engine Expansion (`neuraldbg.py`)
+- **[MODIFY] [neuraldbg.py](file:///home/kuro/Documents/NeuralDBG/neuraldbg.py)**
+  - Implement `_explain_exploding_gradients()` and `_explain_dead_neurons()`.
+  - Add more granular activation stats (e.g., kurtosis, skewness) to `_compute_activation_stats`.
+  - Enhance `detect_coupled_failures` to identify patterns like "Saturation in Layer A leads to Vanishing in Layer B".
+
+---
+
+### Visualization & Tooling
+- **[NEW] [visualize_causality.py](file:///home/kuro/Documents/NeuralDBG/visualize_causality.py)**: A script to export the `causal_chain` to a Mermaid diagram or Graphviz format for easier debugging.
+- **[MODIFY] [demo_vanishing_gradients.py](file:///home/kuro/Documents/NeuralDBG/demo_vanishing_gradients.py)**: Add a second demo case for exploding gradients.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+1. **Initialize Environment**:
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   pip install torch pytest
+   ```
+2. **Run Tests**:
+   ```bash
+   pytest
+   ```
+3. **Run Demo**:
+   ```bash
+   python3 demo_vanishing_gradients.py
+   ```
+
+### Manual Verification
+- Verify that the new causal hypotheses (exploding gradients) are correctly detected in a synthetic failing model.
+- Check that the visualization tool generates a valid Mermaid diagram that accurately represents the training events.

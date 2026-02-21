@@ -1,0 +1,16 @@
+# Task: Rule Refinement, Cleanup, and MVP Planning
+
+- [x] Rule Refinement
+    - [x] Locate session summary rules
+    - [x] Update rules to ensure cumulative updates in [SESSION_SUMMARY.md](file:///home/kuro/Documents/Alarmify/SESSION_SUMMARY.md)
+- [x] Repository Cleanup
+    - [x] Remove temporary test logs
+    - [x] Remove non-essential modules (`mobile_app/`, [cloud_sync/](file:///home/kuro/Documents/Alarmify/tests/test_gui.py#1738-1764))
+    - [x] Prune redundant documentation files
+- [x] MVP Planning & Implementation
+    - [x] Propose strategic feature (Local Fallback Alarm)
+    - [x] Implement local audio playback fallback in [alarm.py](file:///home/kuro/Documents/Alarmify/alarm.py)
+    - [x] Add logic for `alarm.wav` or system beep
+    - [x] Verify fallback triggers on Spotify error
+- [x] Documentation
+    - [x] Update [SESSION_SUMMARY.md](file:///home/kuro/Documents/Alarmify/SESSION_SUMMARY.md) (cumulatively)

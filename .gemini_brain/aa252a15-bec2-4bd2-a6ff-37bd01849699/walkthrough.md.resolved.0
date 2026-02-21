@@ -1,0 +1,65 @@
+# Walkthrough: Algorithmic Map Prototype
+
+I have implemented the core backend for the **Algorithmic Map** feature, enabling `Dissect` to scan the entire repository and generate an "Algorithm Inventory".
+
+## Changes Implemented
+
+### 1. Dynamic Complexity Analysis
+Updated [dissect/detectors/quicksort.py](file:///home/kuro/Documents/Dissect/dissect/detectors/quicksort.py) to calculate time complexity dynamically based on AST depth and recursion patterns, rather than returning "Unknown" or static values.
+
+### 2. Algorithm Scanner
+Created [dissect/scanner.py](file:///home/kuro/Documents/Dissect/dissect/scanner.py), which:
+- Recursively walks the directory tree.
+- Filters out ignored directories (`.git`, `node_modules`, etc.).
+- Parses [.py](file:///home/kuro/Documents/Dissect/build.py), `.js`, and `.java` files.
+- Runs all registered detectors on every function.
+
+### 3. CLI Command
+Added a new [map](file:///home/kuro/Documents/Dissect/dissect/cli.py#12-22) command to the CLI.
+
+```bash
+# Scan current directory and save to default JSON
+dissect map --dir .
+
+# Scan specific folder and output to custom file
+dissect map --dir ./src --output inventory.json
+```
+
+### 4. Output Format
+The [map](file:///home/kuro/Documents/Dissect/dissect/cli.py#12-22) command generates a JSON inventory:
+
+```json
+{
+  "meta": {
+    "root": ".",
+    "total_files": 15,
+    "algorithms_found": 3
+  },
+  "files": [
+    {
+      "path": "src/sort.py",
+      "functions": [
+        {
+          "name": "quick_sort",
+          "line": 12,
+          "algorithms": [
+            {
+              "type": "Quicksort",
+              "confidence": 0.85,
+              "complexity": "O(n log n)",  <-- New!
+              "category": "sorting"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Next Steps
+1.  **Environment Setup**: You need to install `tree-sitter` dependencies to run the scanner.
+    ```bash
+    pip install tree-sitter tree-sitter-languages
+    ```
+2.  **Visualization**: The next phase will build a frontend (HTML/D3.js) to consume this JSON and render the "Heatmap".

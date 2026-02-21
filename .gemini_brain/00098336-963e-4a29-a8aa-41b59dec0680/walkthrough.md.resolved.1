@@ -1,0 +1,37 @@
+# Walkthrough: Rule Update and Repository Cleanup
+
+I have updated the project rules to ensure seamless continuity when switching between different AI editors (Antigravity, Cursor, Windsurf) and performed essential repository maintenance.
+
+## Changes Made
+
+### 1. Cross-Editor Continuity Rules
+I've enhanced the **Session Summary** template and established a **mandatory requirement for a physical [SESSION_SUMMARY.md](file:///home/kuro/Documents/kuro-rules/SESSION_SUMMARY.md) file** in each project root. This ensures that every time a session ends, the AI assistant leaves a clear, permanent, and easily accessible trail of its work.
+
+**Updated Template & File Rule:**
+- **SESSION_SUMMARY.md**: Must be updated or created at the end of every session.
+- **Editor**: Specifically identify which tool was used (Antigravity, Cursor, etc.).
+- **Initiatives given**: Strategic directions or new ideas discussed during the session.
+
+Files updated/created:
+- [AI_GUIDELINES.md](file:///home/kuro/Documents/kuro-rules/AI_GUIDELINES.md) (Master - Bridge rule added)
+- [SESSION_SUMMARY.md](file:///home/kuro/Documents/kuro-rules/SESSION_SUMMARY.md) (Initial record)
+- [NeuralDBG/SESSION_SUMMARY.md](file:///home/kuro/Documents/NeuralDBG/SESSION_SUMMARY.md)
+- [Aladin/SESSION_SUMMARY.md](file:///home/kuro/Documents/Aladin/SESSION_SUMMARY.md)
+
+
+### 2. Repository Cleanup
+The redundant `SpyderTerminal` directory has been removed to keep the workspace organized. Only `Aladin` is now used for Project A.
+
+## Verification Results
+
+### Rule Synchronization
+- [x] `kuro-rules` updated with new summary template.
+- [x] `NeuralDBG` synchronized with master rules.
+- [x] `Aladin` initialized and synchronized with master rules.
+
+### Cleanup
+- [x] `SpyderTerminal` folder deleted successfully.
+- [x] `Aladin` survives as the primary repository for the Probabilistic Transformer.
+
+## Next Steps
+We are now ready to dive into the implementation of the **Probabilistic Transformer** in `Aladin`, using `NeuralDBG` as our iterative debugging partner.

@@ -1,0 +1,14 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+Privacy
+This SERVICE is provided by Make It Count LTD and is intended for use as is. Also, we want to clarify, that we haven't got any relationship with Spotify Inc, but we want to thanks their gratitude regarding the possibility to use his API.
+This page is used to inform visitors regarding our policies with the collection, use, and disclosure of Personal Information if anyone decided to use our Service.
+If you choose to use our service, then you agree to the collection and use of information concerning this policy. The Personal Information that we collect is used for providing and improving the service. We will not use or share your information with anyone except as described in this privacy policy.
+The terms used in this Privacy Policy have the same meanings as in our Terms and Conditions, which is accessible at our app unless otherwise defined in this Privacy Policy.
+Personal data we collect from you
+For a better experience and commercial purposes, while using our Service, we may require you to provide us with certain personally identifiable information.
+Collected through your use of the Alarmify Service
+
+</current_dom>

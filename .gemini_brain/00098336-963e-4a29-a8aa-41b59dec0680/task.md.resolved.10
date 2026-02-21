@@ -1,0 +1,19 @@
+- [x] Rules Restoration & Merging (Continuity, Protocol, Multi-lingual)
+
+- [/] Educational Session: The Probabilistic Transformer
+    - [x] Briefing: The Normal Distribution (Loi Normale) & Probability Space
+    - [x] Visualization: 3D Distribution Comparison (Gaussian vs Others)
+    - [ ] Phase 1: Conceptual Briefings (Remaining)
+
+        - [ ] Briefing 2: Transformer Encoder & Self-Attention
+        - [ ] Briefing 3: Probabilistic Head & Gaussian Distribution
+        - [ ] Briefing 4: Gaussian NLL Loss (Mathematical Objective)
+    - [ ] Phase 2: Implementation (12 Steps)
+
+
+
+
+
+
+
+

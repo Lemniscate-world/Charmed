@@ -1,0 +1,9 @@
+# Tasks
+
+- [ ] Research current codebase and project goals [/]
+    - [x] Explore root directory
+    - [x] Read README.md and logic_graph.md
+    - [x] Inspect neuraldbg.py
+    - [/] Check existing tests and documentation
+- [ ] Identify pending tasks or bugs
+- [ ] Propose a new implementation plan

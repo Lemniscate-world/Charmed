@@ -1,0 +1,27 @@
+# Task Plan: Security Audit and Project Finalization
+
+## 1. Security Analysis and Fixes (Bandit)
+- [x] Ask user for permission to install `bandit` using `apt` or `pipx`.
+- [x] Run `bandit -r .` to find vulnerabilities.
+- [x] Fix identified security issues (Only Low Severity found, no changes needed).
+
+## 2. CI/CD Configuration (CodeQL & SonarQube)
+- [x] Setup GitHub Actions workflow for CodeQL `codeql-analysis.yml`.
+- [x] Identify if SonarQube is required via SonarCloud or local instance, setup workflow.
+
+## 3. Tauri Migration (Rust + React)
+- [x] Install Rust, Node.js, Tauri prerequisites.
+- [x] Scaffold the Tauri project (`charmed-tauri`).
+- [x] Install TailwindCSS and design the Glassmorphic UI.
+- [/] Implement Rust IPC commands (alarm scheduling, status).
+- [ ] Connect React frontend to Rust backend via `invoke()`.
+- [ ] Translate core alarm logic from Python to Rust.
+- [ ] Test full alarm flow end-to-end.
+
+## 4. Google Docs API Sync
+- [x] Create the `google_docs_sync.py` script.
+- [x] Install Google API Python libraries.
+- [ ] User configures `credentials.json` and tests sync.
+
+## 5. Lemniscate-world
+- [x] Add Rust 2% badge to README.
