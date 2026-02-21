@@ -9,7 +9,6 @@ mod audio;
 use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::State;
-use tauri_plugin_fs::FsExt;
 
 // -- STRUCTURES DE DONNÉES --
 

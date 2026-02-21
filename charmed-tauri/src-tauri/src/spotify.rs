@@ -2,9 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 use rspotify::{
-    model::{PlayableItem, PlaylistContext},
+    model::PlaylistContext,
     prelude::*,
-    AuthCodePkceSpotify, Config, Credentials, OAuth,
+    AuthCodePkceSpotify, Credentials, OAuth,
 };
 
 /// Playlist Spotify avec métadonnées pour l'affichage

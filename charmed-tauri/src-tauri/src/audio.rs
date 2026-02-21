@@ -1,7 +1,6 @@
 // audio.rs - Lecture audio locale (alarme fallback)
 
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
-use std::io::Cursor;
+use rodio::{OutputStream, OutputStreamHandle, Sink};
 use std::sync::Mutex;
 
 /// État audio global pour le contrôle de lecture
@@ -12,10 +11,6 @@ struct AudioState {
     _stream_handle: OutputStreamHandle,
     sink: Sink,
 }
-
-/// Son d'alarme intégré (généré programmatiquement - beep simple)
-/// En production, on utiliserait un fichier MP3 intégré dans les ressources
-const ALARM_SOUND_BYTES: &[u8] = include_bytes!("../icons/icon.png");
 
 /// Joue le son d'alarme local
 pub fn play_alarm_sound() -> Result<(), String> {

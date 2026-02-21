@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Bell, Play, Pause, Settings, Music2, Plus, Trash2, Power } from "lucide-react";
+import { Bell, Settings, Music2, Plus, Trash2, Power } from "lucide-react";
 import "./index.css";
 
 // Type miroir de la struct Rust AlarmEntry
