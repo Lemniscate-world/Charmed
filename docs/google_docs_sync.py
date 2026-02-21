@@ -10,7 +10,7 @@ SCOPES = ['https://www.googleapis.com/auth/documents']
 # The ID of the Google Document you want to update (from the URL)
 # Example URL: https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit
 # The ID is: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms
-DOCUMENT_ID = 'YOUR_DOCUMENT_ID_HERE'
+DOCUMENT_ID = '1OCIwjqCjeg4D9UwA9TPOe_JtyLgxfdK25GlBEukmjP0'
 SOURCE_FILE = "../SESSION_SUMMARY.md"
 
 def get_credentials():
