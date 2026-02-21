@@ -1,7 +1,0 @@
-# Task: Enable Artifact Persistence Across Editors
-
-- [ ] Research and design artifact linking strategy [/]
-- [ ] Create `.antigravity` directory and symlink current brain [ ]
-- [ ] Update [.cursorrules](file:///home/kuro/Documents/Dissect/.cursorrules) to reference artifacts [ ]
-- [ ] Create automated workflow for artifact syncing [ ]
-- [ ] Verify setup and document for user [ ]

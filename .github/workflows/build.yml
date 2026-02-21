@@ -12,161 +12,75 @@ on:
       - main
       - develop
   workflow_dispatch:
-    inputs:
-      create_release:
-        description: 'Create a release'
-        required: false
-        type: boolean
-        default: false
 
 env:
-  PYTHON_VERSION: '3.10'
-  APP_NAME: 'Alarmify'
+  APP_NAME: 'Charmed'
 
 jobs:
   build:
-    name: Build Windows Executable and Installer
-    runs-on: windows-latest
+    name: Build ${{ matrix.platform.os-name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - os-name: Windows
+            runs-on: windows-latest
+            target: x86_64-pc-windows-msvc
+    
+    runs-on: ${{ matrix.platform.runs-on }}
     
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          fetch-depth: 0
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: charmed-tauri/package-lock.json
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-      
-      - name: Install dependencies
+          targets: ${{ matrix.platform.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './charmed-tauri/src-tauri -> target'
+
+      - name: Install frontend dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller pytest pytest-qt
-      
-      - name: Run tests
-        run: |
-          python -m pytest tests/ -v --tb=short
-        continue-on-error: false
-      
-      - name: Install Inno Setup
-        run: |
-          choco install innosetup -y
-        shell: powershell
-      
-      - name: Get version
-        id: get_version
-        shell: powershell
-        run: |
-          if ($env:GITHUB_REF -match 'refs/tags/v(.*)') {
-            $version = $matches[1]
-          } else {
-            $version = "1.0.0-dev"
-          }
-          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
-          echo "Version: $version"
-      
-      - name: Update version in installer.iss
-        shell: powershell
-        run: |
-          $version = "${{ steps.get_version.outputs.VERSION }}"
-          $content = Get-Content installer.iss -Raw
-          $content = $content -replace '#define MyAppVersion ".*"', "#define MyAppVersion `"$version`""
-          Set-Content installer.iss -Value $content
-      
-      - name: Build executable with PyInstaller
-        run: |
-          python build_installer.py --skip-inno
-        shell: powershell
-      
-      - name: Sign executable (if certificate available)
-        if: false
-        shell: powershell
-        run: |
-          # Placeholder for code signing
-          # Uncomment and configure when certificate is available
-          # signtool sign /f cert.pfx /p ${{ secrets.CERT_PASSWORD }} /tr http://timestamp.digicert.com /td sha256 /fd sha256 dist/Alarmify.exe
-          echo "Code signing skipped (no certificate configured)"
-      
-      - name: Build installer with Inno Setup
-        run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
-        shell: powershell
-      
-      - name: Sign installer (if certificate available)
-        if: false
-        shell: powershell
-        run: |
-          # Placeholder for code signing
-          # Uncomment and configure when certificate is available
-          # $installerPath = Get-ChildItem -Path Output -Filter "AlarmifySetup*.exe" | Select-Object -First 1
-          # signtool sign /f cert.pfx /p ${{ secrets.CERT_PASSWORD }} /tr http://timestamp.digicert.com /td sha256 /fd sha256 $installerPath.FullName
-          echo "Code signing skipped (no certificate configured)"
-      
-      - name: Verify build outputs
-        shell: powershell
-        run: |
-          Write-Host "Verifying build outputs..."
+          cd charmed-tauri
+          npm install
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: charmed-tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Charmed ${{ github.ref_name }}'
+          releaseBody: 'See CHANGELOG.md for details.'
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref, 'dev') || contains(github.ref, 'rc') }}
           
-          # Check executable
-          if (Test-Path "dist\Alarmify.exe") {
-            $exeSize = (Get-Item "dist\Alarmify.exe").Length / 1MB
-            Write-Host "✓ Executable found: dist\Alarmify.exe ($([math]::Round($exeSize, 2)) MB)"
-          } else {
-            Write-Host "✗ Executable not found!"
-            exit 1
-          }
-          
-          # Check installer
-          $installer = Get-ChildItem -Path Output -Filter "AlarmifySetup*.exe" | Select-Object -First 1
-          if ($installer) {
-            $instSize = $installer.Length / 1MB
-            Write-Host "✓ Installer found: $($installer.Name) ($([math]::Round($instSize, 2)) MB)"
-          } else {
-            Write-Host "✗ Installer not found!"
-            exit 1
-          }
-      
-      - name: Upload executable artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Alarmify-Executable
-          path: dist/Alarmify.exe
-          retention-days: 30
-      
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Alarmify-Installer
-          path: Output/AlarmifySetup*.exe
-          retention-days: 30
-      
-      - name: Create checksums
-        shell: powershell
-        run: |
-          $installer = Get-ChildItem -Path Output -Filter "AlarmifySetup*.exe" | Select-Object -First 1
-          
-          # SHA256 checksum for installer
-          $hash = (Get-FileHash -Path $installer.FullName -Algorithm SHA256).Hash
-          "$hash  $($installer.Name)" | Out-File -FilePath Output/checksums.txt -Encoding utf8
-          
-          Write-Host "Checksums created:"
-          Get-Content Output/checksums.txt
-      
-      - name: Upload checksums artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Checksums
-          path: Output/checksums.txt
+          name: Charmed-${{ matrix.platform.os-name }}
+          path: |
+            charmed-tauri/src-tauri/target/release/bundle/msi/*.msi
+            charmed-tauri/src-tauri/target/release/bundle/nsis/*.exe
           retention-days: 30
 
   release:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
+    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     
@@ -182,118 +96,45 @@ jobs:
       - name: Get version
         id: get_version
         run: |
-          if [[ $GITHUB_REF == refs/tags/v* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-          else
-            VERSION="1.0.0-dev"
-          fi
+          VERSION=${GITHUB_REF#refs/tags/v}
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
       
-      - name: Prepare release files
-        run: |
-          mkdir -p release
-          cp artifacts/Alarmify-Installer/*.exe release/
-          cp artifacts/Checksums/checksums.txt release/
-          ls -la release/
-      
       - name: Generate release notes
-        id: release_notes
         run: |
           cat > release_notes.md << 'EOF'
-          ## Alarmify v${{ steps.get_version.outputs.VERSION }}
+          ## Charmed v${{ steps.get_version.outputs.VERSION }}
           
           ### Installation
           
-          **Windows Installer (Recommended)**
-          - Download `AlarmifySetup-${{ steps.get_version.outputs.VERSION }}.exe`
+          **Windows**
+          - Download the `.msi` installer or `.exe` (NSIS)
           - Run the installer and follow the setup wizard
-          - Optionally enable auto-start on Windows startup
-          
-          **Standalone Executable**
-          - Download `Alarmify.exe` from the artifacts section
-          - No installation required - just run the executable
           
           ### Features
           - 🎵 Spotify playlist alarm clock
           - ⏰ Schedule multiple alarms
-          - 🎨 Modern, customizable UI
-          - 🔔 System tray integration
-          - 🚀 Auto-start option
+          - 🎨 Modern glassmorphism UI
+          - 🔔 Local audio fallback
           
           ### System Requirements
           - Windows 10/11 (64-bit)
-          - Active Spotify account
-          - Spotify API credentials (free from Spotify Developer Dashboard)
-          
-          ### Verification
-          Verify the installer integrity using SHA256 checksums (see `checksums.txt`)
-          
-          ### Notes
-          - First launch will require Spotify API credentials setup
-          - See README.md for detailed setup instructions
+          - Spotify Premium account (for playback control)
           
           ---
           
           **Full Changelog**: https://github.com/${{ github.repository }}/compare/v${{ steps.get_version.outputs.VERSION }}
           EOF
-          cat release_notes.md
       
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.get_version.outputs.VERSION }}
-          name: Alarmify v${{ steps.get_version.outputs.VERSION }}
+          tag_name: ${{ github.ref_name }}
+          name: Charmed ${{ github.ref_name }}
           body_path: release_notes.md
-          draft: false
-          prerelease: ${{ contains(steps.get_version.outputs.VERSION, 'dev') || contains(steps.get_version.outputs.VERSION, 'rc') }}
+          draft: true
+          prerelease: ${{ contains(github.ref, 'dev') || contains(github.ref, 'rc') }}
           files: |
-            release/*
+            artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  smoke-test:
-    name: Smoke Test Build
-    needs: build
-    runs-on: windows-latest
-    
-    steps:
-      - name: Download executable
-        uses: actions/download-artifact@v4
-        with:
-          name: Alarmify-Executable
-          path: test
-      
-      - name: Run smoke tests
-        shell: powershell
-        run: |
-          Write-Host "Running smoke tests..."
-          
-          # Test 1: Executable exists
-          if (Test-Path "test\Alarmify.exe") {
-            Write-Host "✓ Test 1: Executable exists"
-          } else {
-            Write-Host "✗ Test 1: Executable not found"
-            exit 1
-          }
-          
-          # Test 2: Size check
-          $size = (Get-Item "test\Alarmify.exe").Length / 1MB
-          if ($size -gt 10) {
-            Write-Host "✓ Test 2: Size check passed ($([math]::Round($size, 2)) MB)"
-          } else {
-            Write-Host "✗ Test 2: Size too small ($([math]::Round($size, 2)) MB)"
-            exit 1
-          }
-          
-          # Test 3: PE header check
-          $bytes = [System.IO.File]::ReadAllBytes("test\Alarmify.exe")
-          if ($bytes[0] -eq 0x4D -and $bytes[1] -eq 0x5A) {
-            Write-Host "✓ Test 3: Valid PE header (MZ)"
-          } else {
-            Write-Host "✗ Test 3: Invalid PE header"
-            exit 1
-          }
-          
-          Write-Host ""
-          Write-Host "All smoke tests passed! ✓"

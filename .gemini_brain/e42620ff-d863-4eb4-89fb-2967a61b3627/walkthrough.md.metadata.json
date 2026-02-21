@@ -1,5 +1,0 @@
-{
-  "artifactType":  "ARTIFACT_TYPE_WALKTHROUGH",
-  "summary":  "Documents the blocked git push issue on the Charmed repo, root cause (Google OAuth secrets in commit history), and the two resolution options.",
-  "updatedAt":  "2026-02-21T12:36:23.546766707Z"
-}

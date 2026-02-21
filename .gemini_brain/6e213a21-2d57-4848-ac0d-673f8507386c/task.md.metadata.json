@@ -1,6 +1,0 @@
-{
-  "artifactType": "ARTIFACT_TYPE_TASK",
-  "summary": "Completed integration of new universal rules (CodeQL, Fuzzing, Locust, Mutation testing, etc.) into kuro-rules and synced with Alarmify. Created mandatory security.md.",
-  "updatedAt": "2026-02-20T01:36:04.932486977Z",
-  "version": "14"
-}

@@ -1,5 +1,0 @@
-{
-  "artifactType":  "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
-  "summary":  "Deep dive explanation into Tauri architecture, including IPC concepts, bridging the gap between Rust/React and Python backend.",
-  "updatedAt":  "2026-02-21T09:33:46.111425055Z"
-}

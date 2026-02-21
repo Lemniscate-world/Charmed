@@ -20,8 +20,14 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }
+rspotify = { version = "0.13", features = ["cli"] }
+rodio = { version = "0.19", features = ["mp3"] }
+directories = "5"
+uuid = { version = "1", features = ["v4"] }
 

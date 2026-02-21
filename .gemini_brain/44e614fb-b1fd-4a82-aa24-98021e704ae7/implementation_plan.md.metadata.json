@@ -1,5 +1,0 @@
-{
-  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
-  "summary": "Implementation plan for adding Saturated Activation Detection to NeuralDBG. This feature will help identify when layers using sigmoid or tanh activations are operating in saturated regimes, which often leads to vanishing gradients.",
-  "updatedAt": "2026-02-12T06:50:54.463740576Z"
-}
