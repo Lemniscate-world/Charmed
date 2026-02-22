@@ -30,4 +30,5 @@ rspotify = { version = "0.13", features = ["cli"] }
 rodio = { version = "0.19", features = ["mp3"] }
 directories = "5"
 uuid = { version = "1", features = ["v4"] }
+lazy_static = "1.4"
 

@@ -1,13 +1,12 @@
-// spotify.rs - Intégration Spotify Web API via rspotify
+// spotify.rs - Integration Spotify Web API via rspotify
 
 use serde::{Deserialize, Serialize};
 use rspotify::{
-    model::PlaylistContext,
     prelude::*,
     AuthCodePkceSpotify, Credentials, OAuth,
 };
 
-/// Playlist Spotify avec métadonnées pour l'affichage
+/// Playlist Spotify avec metadonnees pour l'affichage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpotifyPlaylist {
     pub id: String,
@@ -19,25 +18,24 @@ pub struct SpotifyPlaylist {
 }
 
 /// Client Spotify avec support OAuth PKCE
+#[derive(Clone)]
 pub struct SpotifyClient {
     client: Option<AuthCodePkceSpotify>,
     client_id: String,
-    client_secret: String,
     authenticated: bool,
 }
 
 impl SpotifyClient {
-    /// Crée un nouveau client Spotify
-    pub fn new(client_id: String, client_secret: String) -> Self {
+    /// Cree un nouveau client Spotify
+    pub fn new(client_id: String, _client_secret: String) -> Self {
         Self {
             client: None,
             client_id,
-            client_secret,
             authenticated: false,
         }
     }
 
-    /// Génère l'URL d'authentification OAuth
+    /// Genere l'URL d'authentification OAuth
     pub fn get_auth_url(&mut self) -> String {
         let oauth = OAuth {
             scopes: rspotify::scopes!(
@@ -55,19 +53,19 @@ impl SpotifyClient {
         
         let mut spotify = AuthCodePkceSpotify::new(creds.clone(), oauth.clone());
         
-        // Générer l'URL d'autorisation
+        // Generer l'URL d'autorisation
         let url = spotify.get_authorize_url(None).unwrap_or_default();
         
-        // Sauvegarder pour compléter l'auth plus tard
+        // Sauvegarder pour completer l'auth plus tard
         self.client = Some(spotify);
         
         url
     }
 
-    /// Complète l'authentification avec le code callback
+    /// Complete l'authentification avec le code callback
     pub async fn complete_auth(&mut self, code: String) -> Result<(), String> {
         if let Some(ref mut spotify) = self.client {
-            // Échanger le code contre un token
+            // Echanger le code contre un token
             spotify
                 .request_token(&code)
                 .await
@@ -76,20 +74,20 @@ impl SpotifyClient {
             self.authenticated = true;
             Ok(())
         } else {
-            Err("Client non initialisé".to_string())
+            Err("Client non initialise".to_string())
         }
     }
 
-    /// Vérifie si l'utilisateur est authentifié
+    /// Verifie si l'utilisateur est authentifie
     pub fn is_authenticated(&self) -> bool {
         self.authenticated
     }
 
-    /// Récupère les playlists de l'utilisateur
+    /// Recupere les playlists de l'utilisateur
     pub async fn get_playlists(&self) -> Result<Vec<SpotifyPlaylist>, String> {
         if let Some(ref spotify) = self.client {
             if !self.authenticated {
-                return Err("Non authentifié".to_string());
+                return Err("Non authentifie".to_string());
             }
 
             let playlists = spotify
@@ -103,7 +101,7 @@ impl SpotifyClient {
                 .map(|p| SpotifyPlaylist {
                     id: p.id.to_string(),
                     name: p.name,
-                    uri: p.uri.to_string(),
+                    uri: format!("spotify:playlist:{}", p.id),
                     image_url: p.images.first().map(|img| img.url.clone()),
                     track_count: p.tracks.total,
                     owner: p.owner.display_name.unwrap_or_else(|| "Unknown".to_string()),
@@ -112,7 +110,7 @@ impl SpotifyClient {
 
             Ok(result)
         } else {
-            Err("Client non initialisé".to_string())
+            Err("Client non initialise".to_string())
         }
     }
 
@@ -120,38 +118,48 @@ impl SpotifyClient {
     pub async fn play_playlist(&self, playlist_uri: &str) -> Result<(), String> {
         if let Some(ref spotify) = self.client {
             if !self.authenticated {
-                return Err("Non authentifié".to_string());
+                return Err("Non authentifie".to_string());
             }
 
-            // Vérifier qu'un appareil actif existe
+            // Verifier qu'un appareil actif existe
             let devices = spotify
                 .device()
                 .await
                 .map_err(|e| format!("Erreur appareils: {}", e))?;
 
-            let has_active = devices.devices.iter().any(|d| d.is_active);
+            let has_active = devices.iter().any(|d| d.is_active);
             
             if !has_active {
                 return Err("Aucun appareil Spotify actif. Ouvrez Spotify sur un appareil.".to_string());
             }
 
-            // Démarrer la lecture
+            // Demarrer la lecture avec l'URI de contexte
+            // Extraire l'ID de la playlist depuis l'URI (format: spotify:playlist:ID)
+            let playlist_id = playlist_uri
+                .strip_prefix("spotify:playlist:")
+                .unwrap_or(&playlist_uri);
+            
+            let context = rspotify::model::PlayContextId::Playlist(
+                rspotify::model::PlaylistId::from_id(playlist_id)
+                    .map_err(|e| format!("ID playlist invalide: {:?}", e))?
+            );
+            
             spotify
-                .start_context_playback(Some(PlaylistContext::Uri(playlist_uri.to_string())), None, None, None)
+                .start_context_playback(context, None, None, None)
                 .await
                 .map_err(|e| format!("Erreur lecture: {}", e))?;
 
             Ok(())
         } else {
-            Err("Client non initialisé".to_string())
+            Err("Client non initialise".to_string())
         }
     }
 
-    /// Règle le volume de lecture
+    /// Regle le volume de lecture
     pub async fn set_volume(&self, volume_percent: u8) -> Result<(), String> {
         if let Some(ref spotify) = self.client {
             if !self.authenticated {
-                return Err("Non authentifié".to_string());
+                return Err("Non authentifie".to_string());
             }
 
             let volume = volume_percent.min(100) as u8;
@@ -163,15 +171,15 @@ impl SpotifyClient {
 
             Ok(())
         } else {
-            Err("Client non initialisé".to_string())
+            Err("Client non initialise".to_string())
         }
     }
 
-    /// Récupère les appareils disponibles
+    /// Recupere les appareils disponibles
     pub async fn get_devices(&self) -> Result<Vec<SpotifyDevice>, String> {
         if let Some(ref spotify) = self.client {
             if !self.authenticated {
-                return Err("Non authentifié".to_string());
+                return Err("Non authentifie".to_string());
             }
 
             let devices = spotify
@@ -180,7 +188,6 @@ impl SpotifyClient {
                 .map_err(|e| format!("Erreur appareils: {}", e))?;
 
             let result: Vec<SpotifyDevice> = devices
-                .devices
                 .into_iter()
                 .map(|d| SpotifyDevice {
                     id: d.id.unwrap_or_default(),
@@ -193,7 +200,7 @@ impl SpotifyClient {
 
             Ok(result)
         } else {
-            Err("Client non initialisé".to_string())
+            Err("Client non initialise".to_string())
         }
     }
 }

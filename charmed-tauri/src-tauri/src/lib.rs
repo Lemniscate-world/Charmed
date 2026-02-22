@@ -1,5 +1,5 @@
 // Charmed — Rust Backend (Tauri IPC Commands)
-// Application de réveil Spotify avec interface glassmorphism moderne
+// Application de reveil Spotify avec interface glassmorphism moderne
 
 mod alarm;
 mod spotify;
@@ -8,7 +8,8 @@ mod audio;
 
 use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{State, Manager};
+use chrono::Datelike;
 
 // -- STRUCTURES DE DONNÉES --
 
@@ -179,35 +180,47 @@ async fn spotify_login(
     Ok(auth_url)
 }
 
-/// Complète l'authentification avec le code callback
+/// Complete l'authentification avec le code callback
 #[tauri::command]
 async fn spotify_callback(
     state: State<'_, AppState>,
     code: String,
 ) -> Result<(), String> {
-    let mut spotify_guard = state.spotify_client.lock().map_err(|e| e.to_string())?;
+    // Cloner le client si present pour liberer le lock
+    let client_opt = {
+        let spotify_guard = state.spotify_client.lock().map_err(|e| e.to_string())?;
+        spotify_guard.clone()
+    };
     
-    if let Some(client) = spotify_guard.as_mut() {
+    if let Some(mut client) = client_opt {
         client.complete_auth(code).await
             .map_err(|e| format!("Erreur auth Spotify: {}", e))?;
+        
+        // Mettre a jour le client authentifie
+        let mut spotify_guard = state.spotify_client.lock().map_err(|e| e.to_string())?;
+        *spotify_guard = Some(client);
         Ok(())
     } else {
-        Err("Client Spotify non initialisé".to_string())
+        Err("Client Spotify non initialise".to_string())
     }
 }
 
-/// Récupère les playlists de l'utilisateur
+/// Recupere les playlists de l'utilisateur
 #[tauri::command]
 async fn get_spotify_playlists(
     state: State<'_, AppState>,
 ) -> Result<Vec<spotify::SpotifyPlaylist>, String> {
-    let spotify_guard = state.spotify_client.lock().map_err(|e| e.to_string())?;
+    // Cloner le client si present pour liberer le lock
+    let client_opt = {
+        let spotify_guard = state.spotify_client.lock().map_err(|e| e.to_string())?;
+        spotify_guard.clone()
+    };
     
-    if let Some(client) = spotify_guard.as_ref() {
+    if let Some(client) = client_opt {
         client.get_playlists().await
-            .map_err(|e| format!("Erreur récupération playlists: {}", e))
+            .map_err(|e| format!("Erreur recuperation playlists: {}", e))
     } else {
-        Err("Non connecté à Spotify".to_string())
+        Err("Non connecte a Spotify".to_string())
     }
 }
 
@@ -217,29 +230,37 @@ async fn play_spotify_playlist(
     state: State<'_, AppState>,
     playlist_uri: String,
 ) -> Result<(), String> {
-    let spotify_guard = state.spotify_client.lock().map_err(|e| e.to_string())?;
+    // Cloner le client si present pour liberer le lock
+    let client_opt = {
+        let spotify_guard = state.spotify_client.lock().map_err(|e| e.to_string())?;
+        spotify_guard.clone()
+    };
     
-    if let Some(client) = spotify_guard.as_ref() {
+    if let Some(client) = client_opt {
         client.play_playlist(&playlist_uri).await
             .map_err(|e| format!("Erreur lecture: {}", e))
     } else {
-        Err("Non connecté à Spotify".to_string())
+        Err("Non connecte a Spotify".to_string())
     }
 }
 
-/// Règle le volume Spotify
+/// Regle le volume Spotify
 #[tauri::command]
 async fn set_spotify_volume(
     state: State<'_, AppState>,
     volume: u8,
 ) -> Result<(), String> {
-    let spotify_guard = state.spotify_client.lock().map_err(|e| e.to_string())?;
+    // Cloner le client si present pour liberer le lock
+    let client_opt = {
+        let spotify_guard = state.spotify_client.lock().map_err(|e| e.to_string())?;
+        spotify_guard.clone()
+    };
     
-    if let Some(client) = spotify_guard.as_ref() {
+    if let Some(client) = client_opt {
         client.set_volume(volume).await
             .map_err(|e| format!("Erreur volume: {}", e))
     } else {
-        Err("Non connecté à Spotify".to_string())
+        Err("Non connecte a Spotify".to_string())
     }
 }
 
@@ -279,13 +300,13 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            // Charger les alarmes sauvegardées
+            // Charger les alarmes sauvegardees
             if let Ok(app_data_dir) = app.path().app_data_dir() {
                 if let Ok(alarms) = storage::load_alarms(&app_data_dir) {
                     let state = app.state::<AppState>();
                     if let Ok(mut stored_alarms) = state.alarms.lock() {
                         *stored_alarms = alarms;
-                    }
+                    };
                 }
             }
             Ok(())
