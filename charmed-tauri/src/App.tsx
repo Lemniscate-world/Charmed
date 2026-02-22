@@ -17,6 +17,16 @@ interface AlarmEntry {
   fade_in_duration: number;
 }
 
+// Type miroir de la struct Rust SpotifyPlaylist
+interface SpotifyPlaylist {
+  id: string;
+  name: string;
+  uri: string;
+  image_url: string | null;
+  track_count: number;
+  owner: string;
+}
+
 export default function App() {
   const [time, setTime] = useState("00:00:00");
   const [alarmTime, setAlarmTime] = useState("08:00");
@@ -25,6 +35,40 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [triggeredAlarm, setTriggeredAlarm] = useState<AlarmEntry | null>(null);
   const lastTriggeredRef = useRef<string | null>(null);
+  
+  // Spotify state
+  const [isSpotifyAuthenticated, setIsSpotifyAuthenticated] = useState(false);
+  const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<SpotifyPlaylist | null>(null);
+
+  // Charger les alarmes au démarrage
+  useEffect(() => {
+    refreshAlarms();
+    checkSpotifyAuth();
+  }, []);
+
+  // Vérifier l'authentification Spotify
+  const checkSpotifyAuth = async () => {
+    try {
+      const auth = await invoke<boolean>("is_spotify_authenticated");
+      setIsSpotifyAuthenticated(auth);
+      if (auth) {
+        await loadPlaylists();
+      }
+    } catch {
+      // Silencieux
+    }
+  };
+
+  // Charger les playlists Spotify
+  const loadPlaylists = async () => {
+    try {
+      const list = await invoke<SpotifyPlaylist[]>("get_spotify_playlists");
+      setPlaylists(list);
+    } catch {
+      // Silencieux
+    }
+  };
 
   // Horloge temps réel via Rust IPC
   useEffect(() => {

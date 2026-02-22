@@ -2,8 +2,12 @@
 
 A modern, cross-platform Spotify alarm clock built with **Tauri (Rust + React)** featuring a stunning glassmorphism UI.
 
-![Charmed UI](https://img.shields.io/badge/Stack-Tauri%20%2B%20React%20%2B%20Rust-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/Lemniscate-world/Charmed/build.yml?branch=main&label=build&logo=github)](https://github.com/Lemniscate-world/Charmed/actions/workflows/build.yml)
+[![Test Coverage](https://img.shields.io/badge/coverage-64%25-brightgreen?logo=vitest)](./charmed-tauri/coverage)
+[![Version](https://img.shields.io/github/package-json/v/Lemniscate-world/Charmed?filename=charmed-tauri%2Fpackage.json&logo=tauri)](https://github.com/Lemniscate-world/Charmed/releases)
+[![License](https://img.shields.io/github/license/Lemniscate-world/Charmed?color=green)](./LICENSE)
+[![Rust](https://img.shields.io/badge/Rust-1.93+-orange?logo=rust)](https://www.rust-lang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue?logo=typescript)](https://www.typescriptlang.org/)
 
 ## ✨ Features
 
