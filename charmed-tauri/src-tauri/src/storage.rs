@@ -1,4 +1,7 @@
 // storage.rs - Persistance des données (alarmes, configuration)
+// TODO: AppConfig sera utilisé pour la configuration Spotify
+
+#![allow(dead_code)]
 
 use std::fs;
 use std::path::Path;

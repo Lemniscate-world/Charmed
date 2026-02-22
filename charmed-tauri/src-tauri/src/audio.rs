@@ -1,4 +1,7 @@
 // audio.rs - Lecture audio locale (alarme fallback)
+// TODO: Améliorer la gestion audio avec un thread dédié
+
+#![allow(dead_code)]
 
 use rodio::{OutputStream, Sink, Source};
 use rodio::source::SineWave;

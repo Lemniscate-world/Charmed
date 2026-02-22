@@ -1,4 +1,7 @@
 // alarm.rs - Logique de gestion des alarmes
+// TODO: Ces fonctions seront utilisées quand l'UI sera connectée
+
+#![allow(dead_code)]
 
 use chrono::{Local, NaiveTime, Weekday, Datelike, TimeZone};
 use crate::AlarmEntry;
