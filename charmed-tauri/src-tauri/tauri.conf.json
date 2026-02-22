@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "charmed-tauri",
+  "productName": "Charmed",
   "version": "0.1.0",
   "identifier": "com.kuro.charmed",
   "build": {
@@ -12,9 +12,14 @@
   "app": {
     "windows": [
       {
-        "title": "charmed-tauri",
-        "width": 800,
-        "height": 600
+        "title": "Charmed - Spotify Alarm Clock",
+        "width": 900,
+        "height": 700,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false
       }
     ],
     "security": {
@@ -23,13 +28,40 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["msi", "nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "Lemniscate",
+    "shortDescription": "Premium Spotify Alarm Clock",
+    "longDescription": "A modern, cross-platform Spotify alarm clock built with Tauri featuring a stunning glassmorphism UI.",
+    "category": "Utility",
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "wix": {
+        "language": ["en-US", "fr-FR"]
+      },
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "icons/icon.ico",
+        "sidebarImage": "icons/icon.ico",
+        "license": null,
+        "installMode": "currentUser",
+        "languages": ["English", "French"]
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "active": false,
+      "endpoints": [],
+      "pubkey": ""
+    }
   }
 }
