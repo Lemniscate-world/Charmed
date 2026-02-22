@@ -1,3 +1,56 @@
+# Session Summary — 2026-02-22 (Part 6)
+**Editor**: VS Code (Cline)
+
+## Français
+**Ce qui a ete fait** :
+- Ajout de badges README (build, coverage, version, license, Rust, TypeScript)
+- Configuration pre-commit hooks (ESLint, Clippy, npm audit, bandit, black)
+- Connexion UI-backend: chargement des alarmes au demarrage
+- Integration Spotify: etat d'authentification et chargement playlists
+- Tous les tests passent (26/26)
+
+**Initiatives donnees** :
+- Pre-commit config complet avec securite et linting
+- Badges dynamiques pour suivre l'etat du projet
+
+**Fichiers modifies** :
+- `README.md` (badges)
+- `.pre-commit-config.yaml` (nouveau)
+- `charmed-tauri/src/App.tsx` (UI-backend integration)
+
+**Etapes suivantes** :
+- Implementer le flow OAuth complet dans l'UI
+- Ajouter selection de playlist dans le formulaire d'alarme
+- Tester l'application complete
+
+## English
+**What was done**:
+- Added README badges (build, coverage, version, license, Rust, TypeScript)
+- Configured pre-commit hooks (ESLint, Clippy, npm audit, bandit, black)
+- UI-backend connection: load alarms on startup
+- Spotify integration: auth state and playlist loading
+- All tests pass (26/26)
+
+**Initiatives given**:
+- Complete pre-commit config with security and linting
+- Dynamic badges to track project status
+
+**Files changed**:
+- `README.md` (badges)
+- `.pre-commit-config.yaml` (new)
+- `charmed-tauri/src/App.tsx` (UI-backend integration)
+
+**Next steps**:
+- Implement full OAuth flow in UI
+- Add playlist selection in alarm form
+- Test complete application
+
+**Tests**: 26 passing
+**Blockers**: None
+**Progress**: 28% (pessimistic estimate - badges, pre-commit, UI-backend connected, Spotify state ready)
+
+---
+
 # Session Summary — 2026-02-22 (Part 5)
 **Editor**: VS Code (Cline)
 
