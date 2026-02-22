@@ -1,3 +1,50 @@
+# Session Summary — 2026-02-22 (Part 5)
+**Editor**: VS Code (Cline)
+
+## Français
+**Ce qui a ete fait** :
+- Amelioration de la couverture de tests App.tsx: 33% -> 47%
+- Couverture totale: 55% -> 64% (objectif 60% atteint)
+- Ajout de 8 nouveaux tests pour App.tsx
+- Tous les tests passent (26 tests)
+
+**Initiatives donnees** :
+- Tests simplifies sans fake timers pour eviter les timeouts
+- Focus sur les tests de rendu et d'interaction basiques
+
+**Fichiers modifies** :
+- `charmed-tauri/src/App.test.tsx`
+
+**Etapes suivantes** :
+- Ajouter badges README
+- Configurer pre-commit hooks
+- Completer Phase 1 Core (Spotify OAuth)
+
+## English
+**What was done**:
+- Improved App.tsx test coverage: 33% -> 47%
+- Total coverage: 55% -> 64% (60% target reached)
+- Added 8 new tests for App.tsx
+- All tests passing (26 tests)
+
+**Initiatives given**:
+- Simplified tests without fake timers to avoid timeouts
+- Focus on basic rendering and interaction tests
+
+**Files changed**:
+- `charmed-tauri/src/App.test.tsx`
+
+**Next steps**:
+- Add README badges
+- Configure pre-commit hooks
+- Complete Phase 1 Core (Spotify OAuth)
+
+**Tests**: 26 passing
+**Blockers**: None
+**Progress**: 25% (pessimistic estimate - 64% test coverage, core features incomplete, no distribution)
+
+---
+
 # Session Summary — 2026-02-22 (Part 4)
 **Editor**: VS Code (Cline)
 
