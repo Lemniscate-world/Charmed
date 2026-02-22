@@ -1,7 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import App from './App';
-import React from 'react';
 
 // Mock Tauri API
 const mockInvoke = vi.fn();

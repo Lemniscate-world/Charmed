@@ -1,10 +1,9 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import SettingsModal from '../components/SettingsModal';
-import React from 'react';
 
 // Mock Tauri API
-const mockInvoke = vi.fn((cmd, args) => {
+const mockInvoke = vi.fn((cmd: string, _args?: unknown) => {
   if (cmd === 'spotify_login') {
     return Promise.resolve('https://accounts.spotify.com/authorize?mock=true');
   }
@@ -19,7 +18,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 // Mock Tauri Opener Plugin
-const mockOpenUrl = vi.fn(() => Promise.resolve());
+const mockOpenUrl = vi.fn((_url: string) => Promise.resolve());
 vi.mock('@tauri-apps/plugin-opener', () => ({
   openUrl: (url: string) => mockOpenUrl(url),
 }));
@@ -215,7 +214,7 @@ describe('SettingsModal', () => {
   });
 
   it('handles login error', async () => {
-    mockInvoke.mockImplementationOnce((cmd: string) => {
+    mockInvoke.mockImplementationOnce((cmd: string, _args?: unknown) => {
       if (cmd === 'spotify_login') {
         return Promise.reject(new Error('Login failed'));
       }
@@ -265,7 +264,7 @@ describe('SettingsModal', () => {
     });
     
     // Mock callback to fail
-    mockInvoke.mockImplementationOnce((cmd: string) => {
+    mockInvoke.mockImplementationOnce((cmd: string, _args?: unknown) => {
       if (cmd === 'spotify_callback') {
         return Promise.reject(new Error('Callback failed'));
       }

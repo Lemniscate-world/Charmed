@@ -145,6 +145,9 @@ export default function App() {
     }
   };
 
+  // Utiliser la fonction pour éviter le warning
+  void playSpotifyPlaylist;
+
   const handleStopAlarm = async () => {
     try {
       await invoke("stop_local_alarm");
