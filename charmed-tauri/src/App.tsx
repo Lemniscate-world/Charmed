@@ -42,6 +42,8 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [callbackCode, setCallbackCode] = useState("");
   const [showCodeInput, setShowCodeInput] = useState(false);
+  const [clientIdInput, setClientIdInput] = useState("");
+  const [showClientIdInput, setShowClientIdInput] = useState(false);
 
   // Charger les données au démarrage
   useEffect(() => {
@@ -163,25 +165,29 @@ export default function App() {
     setTriggeredAlarm(null);
   };
 
-  // Connexion Spotify - SIMPLIFIÉE
+  // Étape 1: Demander le Client ID
   const handleSpotifyLogin = async () => {
+    setShowClientIdInput(true);
+  };
+
+  // Étape 2: Lancer OAuth avec le Client ID
+  const handleStartOAuth = async () => {
+    if (!clientIdInput.trim()) return;
+    
     setIsLoading(true);
     try {
-      // Client ID public pour démo (l'utilisateur peut le personnaliser)
-      const clientId = "YOUR_SPOTIFY_CLIENT_ID";
-      
       const authUrl = await invoke<string>("spotify_login", {
-        clientId,
+        clientId: clientIdInput,
         clientSecret: "",
       });
 
       // Ouvrir automatiquement Spotify dans le navigateur
       await openUrl(authUrl);
+      setShowClientIdInput(false);
       setShowCodeInput(true);
     } catch (e) {
       console.error("Erreur login Spotify:", e);
-      // Afficher un message d'aide
-      alert("Pour connecter Spotify:\n1. Allez sur developer.spotify.com\n2. Créez une app\n3. Ajoutez http://localhost:8888/callback comme Redirect URI\n4. Entrez vos identifiants");
+      alert("Erreur: " + e);
     } finally {
       setIsLoading(false);
     }
@@ -277,19 +283,66 @@ export default function App() {
         {showSpotifyConnect && !isSpotifyAuthenticated && (
           <div className="glass-panel rounded-3xl p-8 mb-8">
             <h3 className="text-xl font-semibold mb-4">Connecter Spotify</h3>
-            <p className="text-white/40 mb-6">
-              Connectez votre compte Spotify pour utiliser vos playlists comme sonneries d'alarme.
-            </p>
             
-            {!showCodeInput ? (
-              <button
-                onClick={handleSpotifyLogin}
-                disabled={isLoading}
-                className="w-full py-4 rounded-2xl bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold flex items-center justify-center gap-2 transition-colors"
-              >
-                {isLoading ? <Loader2 size={20} className="animate-spin" /> : <ExternalLink size={20} />}
-                Se connecter avec Spotify
-              </button>
+            {!showClientIdInput && !showCodeInput ? (
+              <>
+                <p className="text-white/40 mb-6">
+                  Connectez votre compte Spotify pour utiliser vos playlists comme sonneries d'alarme.
+                </p>
+                <button
+                  onClick={handleSpotifyLogin}
+                  className="w-full py-4 rounded-2xl bg-[#1DB954] hover:bg-[#1ed760] text-black font-semibold flex items-center justify-center gap-2 transition-colors"
+                >
+                  <ExternalLink size={20} />
+                  Commencer la configuration
+                </button>
+              </>
+            ) : showClientIdInput && !showCodeInput ? (
+              <>
+                <p className="text-white/40 mb-4">
+                  Vous devez créer une application Spotify pour obtenir un Client ID:
+                </p>
+                <ol className="list-decimal list-inside text-white/60 space-y-2 mb-6 text-sm">
+                  <li>
+                    Allez sur{" "}
+                    <a 
+                      href="https://developer.spotify.com/dashboard" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-[#1DB954] hover:underline"
+                    >
+                      developer.spotify.com/dashboard
+                    </a>
+                  </li>
+                  <li>Cliquez "Create App" puis remplissez les infos</li>
+                  <li>Copiez le <strong>Client ID</strong> ci-dessous</li>
+                </ol>
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    value={clientIdInput}
+                    onChange={(e) => setClientIdInput(e.target.value)}
+                    placeholder="Collez votre Client ID ici"
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white outline-none focus:border-[#1DB954]"
+                  />
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowClientIdInput(false)}
+                      className="flex-1 py-3 rounded-2xl bg-white/5 hover:bg-white/10 transition-colors"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      onClick={handleStartOAuth}
+                      disabled={isLoading || !clientIdInput.trim()}
+                      className="flex-1 py-3 rounded-2xl bg-[#1DB954] text-black font-semibold flex items-center justify-center gap-2"
+                    >
+                      {isLoading ? <Loader2 size={18} className="animate-spin" /> : <ExternalLink size={18} />}
+                      Continuer
+                    </button>
+                  </div>
+                </div>
+              </>
             ) : (
               <div className="space-y-4">
                 <p className="text-sm text-white/60">
