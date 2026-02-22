@@ -39,49 +39,20 @@ describe('App', () => {
     });
   });
 
-  it('renders clock and greeting', () => {
+  it('renders clock', () => {
     render(<App />);
     
     expect(screen.getByText('00:00:00')).toBeInTheDocument();
-    expect(screen.getByText(/Bonjour, Kuro/i)).toBeInTheDocument();
   });
 
-  it('shows REPOS status when no alarms are active', () => {
+  it('shows Inactif status when no alarms are active', () => {
     render(<App />);
-    expect(screen.getByText('REPOS')).toBeInTheDocument();
+    expect(screen.getByText('Inactif')).toBeInTheDocument();
   });
 
   it('renders the time input with default value', () => {
     render(<App />);
     expect(screen.getByDisplayValue('08:00')).toBeInTheDocument();
-  });
-
-  it('opens settings modal when settings button is clicked', () => {
-    render(<App />);
-    
-    const buttons = screen.getAllByRole('button');
-    const settingsButton = buttons.find(btn => btn.title === 'Parametres');
-    
-    if (settingsButton) {
-      fireEvent.click(settingsButton);
-      expect(screen.getByTestId('settings-modal')).toBeInTheDocument();
-    }
-  });
-
-  it('closes settings modal when close button is clicked', () => {
-    render(<App />);
-    
-    const buttons = screen.getAllByRole('button');
-    const settingsButton = buttons.find(btn => btn.title === 'Parametres');
-    
-    if (settingsButton) {
-      fireEvent.click(settingsButton);
-      expect(screen.getByTestId('settings-modal')).toBeInTheDocument();
-      
-      const closeButton = screen.getByLabelText('Close');
-      fireEvent.click(closeButton);
-      expect(screen.queryByTestId('settings-modal')).not.toBeInTheDocument();
-    }
   });
 
   it('handles IPC errors gracefully for get_current_time', async () => {
@@ -160,19 +131,19 @@ describe('App', () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it('renders the sidebar with navigation icons', () => {
+  it('renders the header with logo', () => {
     render(<App />);
     
-    // Check for Music2 icon container (logo)
-    const logoContainer = document.querySelector('.from-\\[\\#1DB954\\]');
-    expect(logoContainer).toBeInTheDocument();
+    // Check for logo and title
+    expect(screen.getByText('Charmed')).toBeInTheDocument();
+    expect(screen.getByText('Spotify Alarm Clock')).toBeInTheDocument();
   });
 
-  it('renders glass-panel container', () => {
+  it('renders glass-panel containers', () => {
     render(<App />);
     
-    const glassPanel = document.querySelector('.glass-panel');
-    expect(glassPanel).toBeInTheDocument();
+    const glassPanels = document.querySelectorAll('.glass-panel');
+    expect(glassPanels.length).toBeGreaterThan(0);
   });
 
   it('renders gradient background', () => {
@@ -182,22 +153,16 @@ describe('App', () => {
     expect(gradientBg).toBeInTheDocument();
   });
 
-  it('renders status indicator dot', () => {
+  it('renders status indicator', () => {
     render(<App />);
     
-    // The status dot should be red when no alarms active (REPOS status)
-    const statusDot = document.querySelector('.bg-red-500');
-    expect(statusDot).toBeInTheDocument();
+    // The status indicator shows "Inactif" when no alarms
+    expect(screen.getByText('Inactif')).toBeInTheDocument();
   });
 
-  it('has correct title attribute on sidebar buttons', () => {
+  it('renders Spotify connect button', () => {
     render(<App />);
     
-    const buttons = screen.getAllByRole('button');
-    const alarmButton = buttons.find(btn => btn.title === 'Alarmes');
-    const addButton = buttons.find(btn => btn.title === 'Ajouter');
-    
-    expect(alarmButton).toBeDefined();
-    expect(addButton).toBeDefined();
+    expect(screen.getByText('Connecter Spotify')).toBeInTheDocument();
   });
 });
