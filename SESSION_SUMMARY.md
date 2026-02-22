@@ -1,3 +1,59 @@
+# Session Summary — 2026-02-22 (Part 1)
+**Editor**: VS Code (Cline)
+
+## Français
+**Ce qui a ete fait** :
+- Verification de l'installation Rust : rustc 1.93.1, cargo 1.93.1
+- Test de l'application Tauri : `npm run tauri dev` fonctionne
+- Nettoyage des warnings dead_code dans les fichiers Rust :
+  - `alarm.rs` : Ajout de `#![allow(dead_code)]` + TODO
+  - `storage.rs` : Ajout de `#![allow(dead_code)]` + TODO
+  - `audio.rs` : Ajout de `#![allow(dead_code)]` + TODO
+- Note : Vite 7.3.1 requiere Node.js 20.19+ ou 22.12+ (actuel: 20.18.0)
+
+**Initiatives donnees** :
+- L'application compile et se lance correctement
+- Les fonctions utilitaires sont preparees pour l'UI future
+
+**Fichiers modifies** :
+- `charmed-tauri/src-tauri/src/alarm.rs`
+- `charmed-tauri/src-tauri/src/storage.rs`
+- `charmed-tauri/src-tauri/src/audio.rs`
+
+**Etapes suivantes** :
+- Upgrader Node.js vers 20.19+ ou 22.12+
+- Configurer les credentials Spotify
+- Connecter l'UI React aux commandes Tauri
+
+## English
+**What was done**:
+- Verified Rust installation: rustc 1.93.1, cargo 1.93.1
+- Tested Tauri application: `npm run tauri dev` works
+- Cleaned up dead_code warnings in Rust files:
+  - `alarm.rs`: Added `#![allow(dead_code)]` + TODO
+  - `storage.rs`: Added `#![allow(dead_code)]` + TODO
+  - `audio.rs`: Added `#![allow(dead_code)]` + TODO
+- Note: Vite 7.3.1 requires Node.js 20.19+ or 22.12+ (current: 20.18.0)
+
+**Initiatives given**:
+- Application compiles and runs correctly
+- Utility functions are prepared for future UI
+
+**Files changed**:
+- `charmed-tauri/src-tauri/src/alarm.rs`
+- `charmed-tauri/src-tauri/src/storage.rs`
+- `charmed-tauri/src-tauri/src/audio.rs`
+
+**Next steps**:
+- Upgrade Node.js to 20.19+ or 22.12+
+- Configure Spotify credentials
+- Connect React UI to Tauri commands
+
+**Tests**: Application runs successfully
+**Blockers**: Node.js version warning (non-blocking)
+
+---
+
 # Session Summary — 2026-02-21 (Part 5)
 **Editor**: VS Code (Cline)
 
