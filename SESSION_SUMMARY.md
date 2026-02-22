@@ -1,3 +1,52 @@
+# Session Summary — 2026-02-22 (Part 8)
+**Editor**: VS Code (Cline)
+
+## Français
+**Ce qui a ete fait** :
+- Build Windows reussi! 3 installers generes:
+  - `Charmed_0.1.0_x64_en-US.msi`
+  - `Charmed_0.1.0_x64_fr-FR.msi`
+  - `Charmed_0.1.0_x64-setup.exe` (NSIS)
+- Nouveau composant `SetupGuide.tsx` pour guider l'utilisateur dans la configuration OAuth
+- Guide etape par etape avec creation d'app Spotify Developer, Redirect URIs, credentials
+- Erreurs TypeScript corrigees, tests exclus du build de production
+
+**Fichiers modifies** :
+- `charmed-tauri/tsconfig.json`
+- `charmed-tauri/src/App.tsx`
+- `charmed-tauri/src/components/SetupGuide.tsx` (nouveau)
+- `charmed-tauri/src/components/SpotifyConnect.tsx`
+
+**Etapes suivantes** :
+- Integrer SetupGuide dans App.tsx pour premier lancement
+- Tester l'application complete
+
+## English
+**What was done**:
+- Windows build successful! 3 installers generated:
+  - `Charmed_0.1.0_x64_en-US.msi`
+  - `Charmed_0.1.0_x64_fr-FR.msi`
+  - `Charmed_0.1.0_x64-setup.exe` (NSIS)
+- New component `SetupGuide.tsx` to guide user through OAuth configuration
+- Step-by-step guide with Spotify Developer app creation, Redirect URIs, credentials
+- Fixed TypeScript errors, excluded tests from production build
+
+**Files changed**:
+- `charmed-tauri/tsconfig.json`
+- `charmed-tauri/src/App.tsx`
+- `charmed-tauri/src/components/SetupGuide.tsx` (new)
+- `charmed-tauri/src/components/SpotifyConnect.tsx`
+
+**Next steps**:
+- Integrate SetupGuide in App.tsx for first launch
+- Test complete application
+
+**Tests**: 26 passing
+**Blockers**: None
+**Progress**: 40% (Windows installers built, OAuth guide created, 64% test coverage)
+
+---
+
 # Session Summary — 2026-02-22 (Part 7)
 **Editor**: VS Code (Cline)
 
