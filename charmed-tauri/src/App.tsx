@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Bell, Settings, Music2, Plus, Trash2, Power } from "lucide-react";
 import "./index.css";
+import SettingsModal from "./components/SettingsModal";
 
 // Type miroir de la struct Rust AlarmEntry
 interface AlarmEntry {
@@ -21,7 +22,9 @@ export default function App() {
   const [alarmTime, setAlarmTime] = useState("08:00");
   const [alarms, setAlarms] = useState<AlarmEntry[]>([]);
   const [isSettingAlarm, setIsSettingAlarm] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [triggeredAlarm, setTriggeredAlarm] = useState<AlarmEntry | null>(null);
+  const lastTriggeredRef = useRef<string | null>(null);
 
   // Horloge temps réel via Rust IPC
   useEffect(() => {
@@ -43,11 +46,19 @@ export default function App() {
       try {
         const triggered = await invoke<AlarmEntry | null>("check_alarms");
         if (triggered) {
-          setTriggeredAlarm(triggered);
-          // Auto-clear après 30 secondes
-          setTimeout(() => setTriggeredAlarm(null), 30000);
+          const now = new Date();
+          const dateKey = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+          const key = `${triggered.id}-${triggered.time}-${dateKey}`;
+          if (lastTriggeredRef.current !== key) {
+            lastTriggeredRef.current = key;
+            setTriggeredAlarm(triggered);
+            try {
+              await invoke("play_local_alarm");
+            } catch {}
+            setTimeout(() => setTriggeredAlarm(null), 30000);
+          }
         }
-      } catch { /* silencieux */ }
+      } catch {}
     }, 1000);
     return () => clearInterval(checker);
   }, []);
@@ -77,6 +88,13 @@ export default function App() {
     } catch (e) {
       console.error("Erreur IPC:", e);
     }
+  };
+
+  const handleStopAlarm = async () => {
+    try {
+      await invoke("stop_local_alarm");
+    } catch {}
+    setTriggeredAlarm(null);
   };
 
   // Activer/Désactiver une alarme
@@ -112,9 +130,9 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md">
           <div className="glass-panel p-12 text-center animate-pulse">
             <Bell size={64} className="text-[#1DB954] mx-auto mb-6" />
-            <h2 className="text-4xl font-bold mb-2">⏰ ALARME !</h2>
+            <h2 className="text-4xl font-bold mb-2">ALARME !</h2>
             <p className="text-white/60 text-xl">{triggeredAlarm.playlist_name}</p>
-            <button onClick={() => setTriggeredAlarm(null)} className="mt-8 px-8 py-3 rounded-full bg-red-500 hover:bg-red-600 text-white font-semibold transition-all">
+            <button onClick={handleStopAlarm} className="mt-8 px-8 py-3 rounded-full bg-red-500 hover:bg-red-600 text-white font-semibold transition-all">
               Arrêter
             </button>
           </div>
@@ -123,6 +141,11 @@ export default function App() {
 
       {/* Conteneur principal */}
       <div className="glass-panel w-full max-w-4xl h-[80vh] flex overflow-hidden relative z-10">
+
+        <SettingsModal 
+          isOpen={isSettingsOpen} 
+          onClose={() => setIsSettingsOpen(false)} 
+        />
 
         {/* Sidebar */}
         <div className="w-24 border-r border-white/5 flex flex-col items-center py-8 gap-8">
@@ -136,7 +159,7 @@ export default function App() {
             <button onClick={() => setIsSettingAlarm(!isSettingAlarm)} className="p-3 rounded-xl hover:bg-white/5 text-white/50 hover:text-[#1DB954] transition-colors" title="Ajouter">
               <Plus size={24} />
             </button>
-            <button className="p-3 rounded-xl hover:bg-white/5 text-white/50 hover:text-white transition-colors" title="Paramètres">
+            <button onClick={() => setIsSettingsOpen(true)} className="p-3 rounded-xl hover:bg-white/5 text-white/50 hover:text-white transition-colors" title="Paramètres">
               <Settings size={24} />
             </button>
           </div>

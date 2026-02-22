@@ -137,7 +137,7 @@ impl SpotifyClient {
             // Extraire l'ID de la playlist depuis l'URI (format: spotify:playlist:ID)
             let playlist_id = playlist_uri
                 .strip_prefix("spotify:playlist:")
-                .unwrap_or(&playlist_uri);
+                .unwrap_or(playlist_uri);
             
             let context = rspotify::model::PlayContextId::Playlist(
                 rspotify::model::PlaylistId::from_id(playlist_id)
@@ -162,7 +162,7 @@ impl SpotifyClient {
                 return Err("Non authentifie".to_string());
             }
 
-            let volume = volume_percent.min(100) as u8;
+            let volume = volume_percent.min(100);
 
             spotify
                 .volume(volume, None)

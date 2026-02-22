@@ -22,7 +22,7 @@ pub fn should_trigger(alarm: &AlarmEntry) -> bool {
     }
 
     // Vérifier le jour si des jours sont spécifiés
-    if !alarm.days.is_empty() && !alarm.days.iter().any(|d| d == &today) {
+    if !alarm.days.is_empty() && !alarm.days.iter().any(|d| d == today) {
         return false;
     }
 
