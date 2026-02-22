@@ -120,8 +120,8 @@ export default function App() {
     try {
       await invoke("set_alarm", {
         time: alarmTime,
-        playlistName: "Morning Mix",
-        playlistUri: "spotify:playlist:default",
+        playlistName: selectedPlaylist?.name || "Morning Mix",
+        playlistUri: selectedPlaylist?.uri || "spotify:playlist:default",
         volume: 80,
         days: [],
         fadeIn: false,
@@ -131,6 +131,17 @@ export default function App() {
       setIsSettingAlarm(false);
     } catch (e) {
       console.error("Erreur IPC:", e);
+    }
+  };
+
+  // Jouer la playlist Spotify quand une alarme se déclenche
+  const playSpotifyPlaylist = async (uri: string) => {
+    try {
+      await invoke("play_spotify_playlist", { playlistUri: uri });
+    } catch (e) {
+      console.error("Erreur lecture Spotify:", e);
+      // Fallback vers l'alarme locale
+      await invoke("play_local_alarm");
     }
   };
 
@@ -229,19 +240,50 @@ export default function App() {
             </h2>
 
             {/* Formulaire rapide d'alarme */}
-            <div className="mt-12 flex items-center gap-4 p-2 rounded-full glass-button">
-              <input
-                type="time"
-                value={alarmTime}
-                onChange={(e) => setAlarmTime(e.target.value)}
-                className="bg-transparent border-none text-2xl font-light outline-none text-center text-white px-4 py-2"
-              />
-              <button
-                onClick={handleSetAlarm}
-                className="w-14 h-14 rounded-full flex items-center justify-center bg-[#1DB954] hover:bg-[#19a34a] text-black shadow-lg transition-all hover:scale-105"
-              >
-                <Plus size={24} />
-              </button>
+            <div className="mt-12 flex flex-col items-center gap-4">
+              <div className="flex items-center gap-4 p-2 rounded-full glass-button">
+                <input
+                  type="time"
+                  value={alarmTime}
+                  onChange={(e) => setAlarmTime(e.target.value)}
+                  className="bg-transparent border-none text-2xl font-light outline-none text-center text-white px-4 py-2"
+                />
+                <button
+                  onClick={handleSetAlarm}
+                  className="w-14 h-14 rounded-full flex items-center justify-center bg-[#1DB954] hover:bg-[#19a34a] text-black shadow-lg transition-all hover:scale-105"
+                >
+                  <Plus size={24} />
+                </button>
+              </div>
+
+              {/* Sélecteur de playlist */}
+              {isSpotifyAuthenticated && playlists.length > 0 && (
+                <div className="flex items-center gap-2 mt-4">
+                  <select
+                    value={selectedPlaylist?.id || ""}
+                    onChange={(e) => {
+                      const playlist = playlists.find(p => p.id === e.target.value);
+                      setSelectedPlaylist(playlist || null);
+                    }}
+                    className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white outline-none focus:border-[#1DB954] transition-colors min-w-[200px]"
+                  >
+                    <option value="" className="bg-gray-800">Selectionner une playlist</option>
+                    {playlists.map((playlist) => (
+                      <option key={playlist.id} value={playlist.id} className="bg-gray-800">
+                        {playlist.name} ({playlist.track_count} pistes)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Playlist sélectionnée affichée */}
+              {selectedPlaylist && (
+                <div className="flex items-center gap-2 text-white/60 text-sm">
+                  <Music2 size={14} className="text-[#1DB954]" />
+                  <span>{selectedPlaylist.name}</span>
+                </div>
+              )}
             </div>
           </main>
 
