@@ -48,12 +48,7 @@
         "language": ["en-US", "fr-FR"]
       },
       "nsis": {
-        "installerIcon": "icons/icon.ico",
-        "headerImage": "icons/icon.ico",
-        "sidebarImage": "icons/icon.ico",
-        "license": null,
-        "installMode": "currentUser",
-        "languages": ["English", "French"]
+        "installMode": "currentUser"
       }
     }
   },
